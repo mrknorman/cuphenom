@@ -36,13 +36,13 @@ float calcMinimumFrequency(
 }
 
 void generateLALInspiral(
-    const float     mass_1_msun, 
-    const float     mass_2_msun, 
-    const float     sample_rate_hertz, 
-    const int32_t   num_samples, 
-    const float     inclination, 
-    const float     distance_mpc, 
-          float2  **ret_strain
+    const float         mass_1_msun, 
+    const float         mass_2_msun, 
+    const float         sample_rate_hertz, 
+    const int32_t       num_samples, 
+    const float         inclination, 
+    const float         distance_mpc, 
+          float32_2_t **ret_strain
     ) {
     
     const float duration_seconds = (float)num_samples/sample_rate_hertz;
@@ -62,10 +62,12 @@ void generateLALInspiral(
 	REAL8 eccentricity = 0.0;
 	REAL8 meanPerAno   = 0.0;
 	REAL8 deltaT       = 1.0/sample_rate_hertz;
-	REAL8 f_min        = calcMinimumFrequency(
-		                                     mass_1_msun, 
-		                                     mass_2_msun, 
-		                                     duration_seconds);
+	REAL8 f_min        = 
+		calcMinimumFrequency(
+			mass_1_msun, 
+			mass_2_msun, 
+			duration_seconds
+		);
 	
 	REAL8        f_ref       = 0.0;
 	LALDict     *extraParams = NULL;
@@ -102,7 +104,7 @@ void generateLALInspiral(
 		approximant
 	);
 	
-	const int waveform_num_samples = hplus->data->length;
+	const int32_t waveform_num_samples = (int32_t)hplus->data->length;
 	
 	if (waveform_num_samples < num_samples) 
 	{	
@@ -113,9 +115,9 @@ void generateLALInspiral(
 		);
 	}
 	
-	size_t new_array_size = (size_t)num_samples * sizeof(float);
-	
-	float2 *strain = (float2*)malloc(new_array_size);
+	size_t new_array_size = (size_t)num_samples * sizeof(float32_2_t);
+
+	float32_2_t *strain = (float32_2_t*)malloc(new_array_size);
 	int32_t new_waveform_index = 0;
     for (int32_t index = 0; index < num_samples; index++) 
 	{	
@@ -123,6 +125,7 @@ void generateLALInspiral(
 		strain[index].x = (float)hcross->data->data[new_waveform_index];
 		strain[index].y = (float)hplus->data->data[new_waveform_index];
     }
+	
 	free(hcross->data->data); free(hplus->data->data);
 
 	*ret_strain = strain;

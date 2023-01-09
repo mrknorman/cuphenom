@@ -1,15 +1,15 @@
 #OBJS specifies which files to compile as part of the project
-OBJS = ./src/cuphenom.cu 
+OBJS = ./src/cuphenom.c
 
 #CC specifies which compiler we're using
 CC = nvcc
 
 #COMPILER_FLAGS specifies the additional compilation options we're using
 
-INCLUDE         = -I./include -I./io_tools/include 
+INCLUDE         = -I./include -I./io_tools/include -I./py_tools/include
 LAL_INCLUDE     = -I/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/include
 PYTHON_INCLUDE  = -I/home/michael.norman/.conda/envs/dragon/include/python3.10
-NVIDIA_FLAGS   = -arch=native -use-fast-math -Xcompiler -march=native -Xcompiler -O3 -forward-unknown-to-host-compiler
+NVIDIA_FLAGS   = -arch=native -use-fast-math -Xcompiler -march=native -Xcompiler -Ofast -Xcompiler -std=gnu11  -forward-unknown-to-host-compiler
 NVIDIA_DEBUG   = -G -Xcompiler -rdynamic
 
 DEBUG_FLAG   = -g

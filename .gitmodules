@@ -1,3 +1,6 @@
 [submodule "py_tools"]
 	path = py_tools
 	url = https://github.com/mrknorman/py_tools.git
+[submodule "io_tools"]
+	path = io_tools
+	url = https://github.com/mrknorman/io_tools
