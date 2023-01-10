@@ -309,7 +309,7 @@ int32_t main(){
 		duration,
 		inclination,
 		distance,
-		1000
+		10
 	);
 	
 	return 0;

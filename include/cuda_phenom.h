@@ -211,8 +211,6 @@ mass_properties_t initRedshiftedMass(
 	return initMassProperties(mass_1, mass_2);
 }
 
-//#include <choose.h>
-
 static void checkSystemParameters(
 	const mass_properties_t mass,
 	const spin_properties_t spin, 
@@ -303,6 +301,8 @@ static void checkSystemParameters(
 	}
 }
 
+#include "choose.h"
+
 int32_t InspiralTDFromTD(
      REAL8TimeSeries **hplus,  // <-- +-polarization waveform */
      REAL8TimeSeries **hcross, // <-- x-polarization waveform */
@@ -343,6 +343,9 @@ int32_t InspiralTDFromTD(
 	if (f_min > kerr_isco_frequency)
 		f_min = kerr_isco_frequency;
 	
+	// Calculate f_max:
+    double f_max = 0.5 / deltaT.seconds;
+
 	// General sanity check the input parameters - only give warnings! 
 	checkSystemParameters(
 		mass,
@@ -352,7 +355,7 @@ int32_t InspiralTDFromTD(
 	);
 	
 	// Upper bound on the chirp time starting at f_min:
-	const timeUnit_t chirp_time_upper_bound = 
+	timeUnit_t chirp_time_upper_bound = 
 		InspiralChirpTimeBound(f_min, mass, spin);
 	
 	// Upper bound on the final black hole spin:
@@ -379,11 +382,11 @@ int32_t InspiralTDFromTD(
 	 
 	timeUnit_t region_max_duration = 		 
 		addTimes(
-			 3,
-			 chirp_time_upper_bound,
-			 plunge_time_upper_bound,
-			 extra_time
-		 );
+			3,
+			chirp_time_upper_bound,
+			plunge_time_upper_bound,
+			extra_time
+		);
 	
 	region_max_duration = scaleTime(
 		region_max_duration,
@@ -391,47 +394,129 @@ int32_t InspiralTDFromTD(
 	);
 	
 	float64_t fstart = 
-		 InspiralChirpStartFrequencyBound(
+		InspiralChirpStartFrequencyBound(
 			 region_max_duration, 
 			 mass
-		 );
+		);
+	
+	// GPS times:
+    timeUnit_t hplus_gps  = initTimeSeconds(0.0);
+	timeUnit_t hcross_gps = initTimeSeconds(0.0);
+	
+	COMPLEX16FrequencySeries *hptilde = NULL;
+	COMPLEX16FrequencySeries *hctilde = NULL;
+
+	int32_t retval = 
+		XLALSimInspiralFD(
+			&hptilde, 
+			&hctilde, 
+			mass._1.kilograms, 
+			mass._2.kilograms, 
+			spin._1.x, spin._1.y, spin._1.z, 
+			spin._2.x, spin._2.y, spin._2.z, 
+			distance.meters, 
+			inclination, 
+			phiRef, 
+			longAscNodes, 
+			eccentricity, 
+			meanPerAno, 
+			0.0,
+			fstart, 
+			f_max,
+			f_ref, 
+			LALparams, 
+			approximant
+		);
+	
+	// we want to make sure that this waveform will give something
+    // sensible if it is later transformed into the time domain:
+    // to avoid the end of the waveform wrapping around to the beginning,
+    // we shift waveform backwards in time and compensate for this
+    // shift by adjusting the epoch -- note that XLALSimInspiralFD
+    // uarantees that there is extra padding to do this 
+	
+    float64_t tshift = round(extra_time.seconds / deltaT.seconds) * deltaT.seconds; // integer number of samples 
+    for (size_t k = 0; k < hptilde->data->length; ++k) 
+	{
+		double complex phasefac = cexp(2.0 * M_PI * I * k * hptilde->deltaF * tshift);
+		hptilde->data->data[k] *= phasefac;
+		hctilde->data->data[k] *= phasefac;
+    }
+	hplus_gps  = addTimes(2, hplus_gps, deltaT);
+	hcross_gps = addTimes(2, hcross_gps, deltaT);
+	
+	const LALUnit lalStrainUnit = { 0, { 0, 0, 0, 0, 0, 1, 0}, { 0, 0, 0, 0, 0, 0, 0} };
   
-     // Generate the waveform in the time domain starting at fstart :
-     int32_t retval = 
-		 XLALSimInspiralChooseTDWaveform(
-			 hplus, 
-			 hcross, 
-			 mass._1.kilograms, 
-			 mass._2.kilograms, 
-			 spin._1.x, spin._1.y, spin._1.z, 
-			 spin._2.x, spin._2.y, spin._2.z, 
-			 distance.meters, 
-			 inclination, 
-			 phiRef, 
-			 longAscNodes, 
-			 eccentricity, 
-			 meanPerAno, 
-			 deltaT.seconds,
-			 fstart, 
-			 f_ref, 
-			 LALparams, 
-			 approximant
+	// transform the waveform into the time domain
+	size_t chirplen = 2 * (hptilde->data->length - 1);
+	*hplus = XLALCreateREAL8TimeSeries("H_PLUS", &hptilde->epoch, 0.0, deltaT.seconds, &lalStrainUnit, chirplen);
+	*hcross = XLALCreateREAL8TimeSeries("H_CROSS", &hctilde->epoch, 0.0, deltaT.seconds, &lalStrainUnit, chirplen);
+	void* plan = XLALCreateReverseREAL8FFTPlan(chirplen, 0);
+	if (!(*hplus) || !(*hcross) || !plan) {
+		XLALDestroyCOMPLEX16FrequencySeries(hptilde);
+		XLALDestroyCOMPLEX16FrequencySeries(hctilde);
+		XLALDestroyREAL8TimeSeries(*hcross);
+		XLALDestroyREAL8TimeSeries(*hplus);
+		XLALDestroyREAL8FFTPlan(plan);
+		XLAL_ERROR(XLAL_EFUNC);
+	}
+	XLALREAL8FreqTimeFFT(*hplus, hptilde, plan);
+	XLALREAL8FreqTimeFFT(*hcross, hctilde, plan);
+
+	// apply time domain filter at original fstart
+	XLALHighPassREAL8TimeSeries(*hplus, fstart, 0.99, 8);
+	XLALHighPassREAL8TimeSeries(*hcross, fstart, 0.99, 8);
+	
+	// compute how long a chirp we should have
+	// revised estimate of chirp length from new start frequency
+	timeUnit_t chirp_max_duration = scaleTime(
+		chirp_time_upper_bound,
+		(1.0 + extra_time_fraction)
 	);
 	
-     if (retval < 0)
+	fstart = 
+		InspiralChirpStartFrequencyBound(
+			 chirp_max_duration, 
+			 mass
+		);
+	chirp_max_duration = 
+		InspiralChirpTimeBound(fstart, mass, spin);
+
+	// total expected chirp length includes merger 
+	chirplen = (size_t) 
+		round((chirp_max_duration.seconds + plunge_time_upper_bound.seconds) / deltaT.seconds);
+
+	// amount to snip off at the end is tshift 
+	size_t end = 
+		(*hplus)->data->length - (size_t) round(tshift / deltaT.seconds);
+
+	// snip off extra time at beginning and at the end 
+	XLALResizeREAL8TimeSeries(*hplus, end - chirplen, chirplen);
+	XLALResizeREAL8TimeSeries(*hcross, end - chirplen, chirplen);
+
+	// clean up
+	XLALDestroyREAL8FFTPlan(plan);
+	XLALDestroyCOMPLEX16FrequencySeries(hptilde);
+	XLALDestroyCOMPLEX16FrequencySeries(hctilde);
+	
+	// generate the conditioned waveform in the frequency domain
+    //note: redshift factor has already been applied above
+    //set deltaF = 0 to get a small enough resolution
+	
+    if (retval < 0)
          XLAL_ERROR(XLAL_EFUNC);
   
-     /* condition the time domain waveform by tapering in the extra time
-         * at the beginning and high-pass filtering above original f_min */
-     XLALSimInspiralTDConditionStage1(
-		 *hplus, 
-		 *hcross, 
+    /* condition the time domain waveform by tapering in the extra time
+     * at the beginning and high-pass filtering above original f_min */
+    XLALSimInspiralTDConditionStage1(
+		*hplus, 
+		*hcross, 
 		 extra_time_fraction * chirp_time_upper_bound.seconds + extra_time.seconds, 
 		 original_f_min
-	 );
+	);
   
-     return 0;
- }
+    return 0;
+}
 
 
 void generatePhenomCUDA(
