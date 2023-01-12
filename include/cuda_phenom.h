@@ -3,6 +3,7 @@
 
 #include <lal/LALDict.h>
 #include <lal/LALSimInspiral.h>
+#include <cuda_maths.h>
 
 
 typedef struct {
@@ -166,20 +167,24 @@ inline timeUnit_t InspiralMergeTimeBound(
 
 timeUnit_t InspiralRingdownTimeBound(
 	const mass_properties_t mass,
-	const float64_t         final_spin_upper_bound
+	const spin_properties_t spin
 	) {
-     const float64_t nefolds = 11; /* Waveform generators only go up to 10 */
-  
-     /* These values come from Table VIII of Berti, Cardoso, and Will with n=0, m=2 */
-	 const float64_t f[] = {1.5251, -1.1568,  0.1292}; 
-	 const float64_t q[] = {0.7000,  1.4187, -0.4990}; 
+	const float64_t nefolds = 11; /* Waveform generators only go up to 10 */
 
-     const float64_t omega = (f[0] + f[1] * pow(1.0 - final_spin_upper_bound, f[2])) 
-	                   / mass.total.seconds;
-     const float64_t Q = q[0] + q[1] * pow(1.0 - final_spin_upper_bound, q[2]);
-     const float64_t tau = 2.0 * Q / omega; /* see Eq. (2.1) of Berti, Cardoso, and Will */
-	 
-	 return initTimeSeconds(nefolds * tau);
+	// Upper bound on the final black hole spin:
+	const float64_t final_spin_upper_bound = 
+		InspiralFinalBlackHoleSpinBound(spin);
+
+	/* These values come from Table VIII of Berti, Cardoso, and Will with n=0, m=2 */
+	const float64_t f[] = {1.5251, -1.1568,  0.1292}; 
+	const float64_t q[] = {0.7000,  1.4187, -0.4990}; 
+
+	const float64_t omega = (f[0] + f[1] * pow(1.0 - final_spin_upper_bound, f[2])) 
+				   / mass.total.seconds;
+	const float64_t Q = q[0] + q[1] * pow(1.0 - final_spin_upper_bound, q[2]);
+	const float64_t tau = 2.0 * Q / omega; /* see Eq. (2.1) of Berti, Cardoso, and Will */
+
+	return initTimeSeconds(nefolds * tau);
 }
 
 inline double InspiralTaylorT3Frequency_0PNCoeff(
@@ -195,6 +200,26 @@ float64_t InspiralChirpStartFrequencyBound(
 	 
 	double c0 = InspiralTaylorT3Frequency_0PNCoeff(mass.total);
 	return c0 * pow(5.0 * mass.total.seconds / (mass.symmetric_ratio * chirp_time.seconds), 3.0 / 8.0);
+}
+
+timeUnit_t calculateTotalTime(
+	const timeUnit_t chirp_time_upper_bound,
+	const timeUnit_t merge_time_upper_bound,
+	const timeUnit_t ringdown_time_upper_bound,
+	const timeUnit_t extra_time,
+	const float64_t  extra_time_fraction
+	) {
+	
+	timeUnit_t total_time_upper_bound = 
+		addTimes(
+			4,
+			chirp_time_upper_bound,
+			merge_time_upper_bound,
+			ringdown_time_upper_bound,
+			extra_time
+		);
+		
+	return scaleTime(total_time_upper_bound, (1.0 + extra_time_fraction));
 }
 
 mass_properties_t initRedshiftedMass(
@@ -301,7 +326,129 @@ static void checkSystemParameters(
 	}
 }
 
-#include "choose.h"
+void castComplex64to32(complex double *in, complex float *out,  size_t n, double scale_factor){
+    for(size_t i = 0; i< n; i++){
+        out[i] = (complex float){creal(in[i]) * scale_factor, cimag(in[i])*scale_factor};
+    }
+}
+
+void cast32to64(float *in, double *out,  size_t n, double scale_factor){
+    for(size_t i = 0; i< n; i++){
+        out[i] = ((double) in[i]) / scale_factor;
+    }
+}
+
+void performIRFFT(
+	const double complex *hptilde,
+	const double complex *hctilde,
+	      double *hplus,
+	      double *hcross,
+	const int32_t num_waveform_samples
+	) 
+	
+	{
+	const complex double scale_factor = 1;
+	complex float  *float_array  = (complex float*)malloc(sizeof(complex float)*num_waveform_samples*2);	
+	
+	castComplex64to32(
+		hptilde,
+		float_array, 
+		num_waveform_samples/2 + 1,
+		scale_factor
+	);
+	
+	castComplex64to32(
+		hctilde,
+		&float_array[num_waveform_samples], 
+		num_waveform_samples/2 + 1,
+		scale_factor
+	);
+
+	complex float *ifft_g = NULL;
+	cudaToDevice(
+		(void*) float_array, 
+		sizeof(complex float),
+		num_waveform_samples*2,
+        (void**) &ifft_g
+    );	
+	
+	cudaIRfft(
+		num_waveform_samples,
+		2,
+		(cuFloatComplex*)ifft_g
+	);
+	
+	float *ifft = NULL;
+	cudaToHost(
+		ifft_g, 
+		sizeof(float),
+		num_waveform_samples*3,
+        (void**) &ifft
+    );
+	cast32to64(
+		ifft, 
+		hplus,
+		num_waveform_samples,
+		scale_factor
+	);
+	cast32to64(
+		&ifft[2*num_waveform_samples], 
+		hcross,
+		num_waveform_samples,
+		scale_factor
+	);
+	free(ifft);
+	cudaFree(ifft_g);
+}
+
+void performIRFFT64(
+	const double complex *hptilde,
+	const double complex *hctilde,
+	      double *hplus,
+	      double *hcross,
+	const int32_t num_waveform_samples
+	) 
+	
+	{
+	complex double *float_array  = (complex double*)malloc(sizeof(complex double)*num_waveform_samples*2);	
+	
+	for (int32_t index = 0; index < (num_waveform_samples/2 + 1); index++)
+	{
+		float_array[index]                        = hptilde[index];
+		float_array[index + num_waveform_samples] = hctilde[index];
+	}
+	
+	complex double *ifft_g = NULL;
+	cudaToDevice(
+		(void*) float_array, 
+		sizeof(complex double),
+		num_waveform_samples*2,
+        (void**) &ifft_g
+    );	
+	
+	cudaIRfft64(
+		num_waveform_samples,
+		2,
+		(cuDoubleComplex*)ifft_g
+	);
+	
+	double *ifft = NULL;
+	cudaToHost(
+		ifft_g, 
+		sizeof(double),
+		num_waveform_samples*3,
+        (void**) &ifft
+    );
+	
+	for (int32_t index = 0; index < num_waveform_samples; index++)
+	{
+		hplus[index]  = ifft[index];
+		hcross[index] = ifft[index + 2*num_waveform_samples];
+	}
+	
+	free(ifft);
+	cudaFree(ifft_g);
+}
 
 int32_t InspiralTDFromTD(
      REAL8TimeSeries **hplus,  // <-- +-polarization waveform */
@@ -353,51 +500,49 @@ int32_t InspiralTDFromTD(
 		deltaT,
 		f_min
 	);
-	
-	// Upper bound on the chirp time starting at f_min:
-	timeUnit_t chirp_time_upper_bound = 
-		InspiralChirpTimeBound(f_min, mass, spin);
-	
-	// Upper bound on the final black hole spin:
-     const float64_t final_spin_upper_bound = 
-		 InspiralFinalBlackHoleSpinBound(spin);
-	
-    // Upper bound on the final plunge, merger, and ringdown time:
-	const timeUnit_t plunge_time_upper_bound = 
-		addTimes(
-			2,
-			InspiralMergeTimeBound(mass),
-			InspiralRingdownTimeBound(mass, final_spin_upper_bound)
-		);
-  
-	// Extra time to include for all waveforms to take care of situations
-	// where the frequency is close to merger (and is sweeping rapidly):
-	// this is a few cycles at the low frequency:
+		
+	// Calculate time boundaries:
+
+	// Upper bound on the chirp time starting at f_min with extra time to 
+	// include for all waveforms to take care of situations where the frequency 
+	// is close to merger (and is sweeping rapidly) this is a few cycles at the l
+	// low frequency:
 	const timeUnit_t extra_time = initTimeSeconds(extra_cycles / f_min);
-	 
+	const timeUnit_t chirp_time_upper_bound = 
+			addTimes(2, InspiralChirpTimeBound(f_min, mass, spin), extra_time);
+
+	// Upper bound on the plunge and merger time:
+	const timeUnit_t merge_time_upper_bound = InspiralMergeTimeBound(mass);
+
+	// Upper bound on the ringdown time:
+	const timeUnit_t ringdown_time_upper_bound = 
+		InspiralRingdownTimeBound(mass, spin);
+	
+	const timeUnit_t total_time_upper_bound = 
+		scaleTime(
+			addTimes(
+				3,
+				chirp_time_upper_bound,
+				merge_time_upper_bound,
+				ringdown_time_upper_bound
+			),
+			(1.0 + extra_time_fraction)
+		);
+	
 	// time domain approximant: condition by generating a waveform
 	// with a lower starting frequency and apply tapers in the
 	// region between that lower frequency and the requested
 	// frequency f_min; here compute a new lower frequency:
-	 
-	timeUnit_t region_max_duration = 		 
-		addTimes(
-			3,
-			chirp_time_upper_bound,
-			plunge_time_upper_bound,
-			extra_time
-		);
 	
-	region_max_duration = scaleTime(
-		region_max_duration,
-		(1.0 + extra_time_fraction)
-	);
-	
-	float64_t fstart = 
+	const float64_t fstart = 
 		InspiralChirpStartFrequencyBound(
-			 region_max_duration, 
+			 total_time_upper_bound, 
 			 mass
 		);
+	
+	// generate the conditioned waveform in the frequency domain
+    //note: redshift factor has already been applied above
+    //set deltaF = 0 to get a small enough resolution
 	
 	// GPS times:
     timeUnit_t hplus_gps  = initTimeSeconds(0.0);
@@ -405,7 +550,7 @@ int32_t InspiralTDFromTD(
 	
 	COMPLEX16FrequencySeries *hptilde = NULL;
 	COMPLEX16FrequencySeries *hctilde = NULL;
-
+	
 	int32_t retval = 
 		XLALSimInspiralFD(
 			&hptilde, 
@@ -445,63 +590,60 @@ int32_t InspiralTDFromTD(
 	hplus_gps  = addTimes(2, hplus_gps, deltaT);
 	hcross_gps = addTimes(2, hcross_gps, deltaT);
 	
-	const LALUnit lalStrainUnit = { 0, { 0, 0, 0, 0, 0, 1, 0}, { 0, 0, 0, 0, 0, 0, 0} };
-  
-	// transform the waveform into the time domain
-	size_t chirplen = 2 * (hptilde->data->length - 1);
-	*hplus = XLALCreateREAL8TimeSeries("H_PLUS", &hptilde->epoch, 0.0, deltaT.seconds, &lalStrainUnit, chirplen);
-	*hcross = XLALCreateREAL8TimeSeries("H_CROSS", &hctilde->epoch, 0.0, deltaT.seconds, &lalStrainUnit, chirplen);
-	void* plan = XLALCreateReverseREAL8FFTPlan(chirplen, 0);
-	if (!(*hplus) || !(*hcross) || !plan) {
-		XLALDestroyCOMPLEX16FrequencySeries(hptilde);
-		XLALDestroyCOMPLEX16FrequencySeries(hctilde);
-		XLALDestroyREAL8TimeSeries(*hcross);
-		XLALDestroyREAL8TimeSeries(*hplus);
-		XLALDestroyREAL8FFTPlan(plan);
-		XLAL_ERROR(XLAL_EFUNC);
-	}
-	XLALREAL8FreqTimeFFT(*hplus, hptilde, plan);
-	XLALREAL8FreqTimeFFT(*hcross, hctilde, plan);
-
-	// apply time domain filter at original fstart
+	// Transform the waveform into the time domain:
+	
+	const LALUnit lalStrainUnit = 
+		{ 0, { 0, 0, 0, 0, 0, 1, 0}, { 0, 0, 0, 0, 0, 0, 0} };
+	
+	size_t num_waveform_samples = 2 * (hptilde->data->length - 1);
+	
+	*hplus = XLALCreateREAL8TimeSeries(
+		"H_PLUS", 
+		&hptilde->epoch, 
+		0.0, 
+		deltaT.seconds,
+		&lalStrainUnit, 
+		num_waveform_samples
+	);
+	
+	*hcross = XLALCreateREAL8TimeSeries(
+		"H_CROSS", 
+		&hctilde->epoch, 
+		0.0, 
+		deltaT.seconds, 
+		&lalStrainUnit, 
+		num_waveform_samples
+	);
+	
+	performIRFFT64(
+		hptilde->data->data,
+		hctilde->data->data,
+		(*hplus)->data->data,
+		(*hcross)->data->data,
+		num_waveform_samples
+	);
+	
+	// apply time domain filter at fstart
 	XLALHighPassREAL8TimeSeries(*hplus, fstart, 0.99, 8);
 	XLALHighPassREAL8TimeSeries(*hcross, fstart, 0.99, 8);
 	
-	// compute how long a chirp we should have
-	// revised estimate of chirp length from new start frequency
-	timeUnit_t chirp_max_duration = scaleTime(
-		chirp_time_upper_bound,
-		(1.0 + extra_time_fraction)
-	);
-	
-	fstart = 
-		InspiralChirpStartFrequencyBound(
-			 chirp_max_duration, 
-			 mass
-		);
-	chirp_max_duration = 
-		InspiralChirpTimeBound(fstart, mass, spin);
-
 	// total expected chirp length includes merger 
-	chirplen = (size_t) 
-		round((chirp_max_duration.seconds + plunge_time_upper_bound.seconds) / deltaT.seconds);
+	const size_t chirplen = (size_t) 
+		round(total_time_upper_bound.seconds / deltaT.seconds);
 
 	// amount to snip off at the end is tshift 
 	size_t end = 
 		(*hplus)->data->length - (size_t) round(tshift / deltaT.seconds);
 
 	// snip off extra time at beginning and at the end 
-	XLALResizeREAL8TimeSeries(*hplus, end - chirplen, chirplen);
-	XLALResizeREAL8TimeSeries(*hcross, end - chirplen, chirplen);
+	int32_t snip_start = (int32_t) (end - chirplen);
+	
+	XLALResizeREAL8TimeSeries(*hplus, snip_start, chirplen);
+	XLALResizeREAL8TimeSeries(*hcross, snip_start, chirplen);
 
 	// clean up
-	XLALDestroyREAL8FFTPlan(plan);
 	XLALDestroyCOMPLEX16FrequencySeries(hptilde);
 	XLALDestroyCOMPLEX16FrequencySeries(hctilde);
-	
-	// generate the conditioned waveform in the frequency domain
-    //note: redshift factor has already been applied above
-    //set deltaF = 0 to get a small enough resolution
 	
     if (retval < 0)
          XLAL_ERROR(XLAL_EFUNC);
@@ -511,13 +653,12 @@ int32_t InspiralTDFromTD(
     XLALSimInspiralTDConditionStage1(
 		*hplus, 
 		*hcross, 
-		 extra_time_fraction * chirp_time_upper_bound.seconds + extra_time.seconds, 
+		 extra_time_fraction * chirp_time_upper_bound.seconds, 
 		 original_f_min
 	);
   
     return 0;
 }
-
 
 void generatePhenomCUDA(
     const mass_t        mass_1, 
@@ -595,8 +736,8 @@ void generatePhenomCUDA(
     for (int32_t index = 0; index < num_samples; index++) 
 	{	
 		new_waveform_index = waveform_num_samples - num_samples - 1 + index;
-		strain[index].x = (float)hcross->data->data[new_waveform_index];
-		strain[index].y = (float)hplus->data->data[new_waveform_index];
+		strain[index].x = (float)hplus->data->data[new_waveform_index];
+		strain[index].y = (float)hcross->data->data[new_waveform_index];
     }
 	
 	free(hcross->data->data); free(hplus->data->data);

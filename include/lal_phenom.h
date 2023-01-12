@@ -87,8 +87,8 @@ void generatePhenomLAL(
     for (int32_t index = 0; index < num_samples; index++) 
 	{	
 		new_waveform_index = waveform_num_samples - num_samples - 1 + index;
-		strain[index].x = (float64_t)hcross->data->data[new_waveform_index];
-		strain[index].y = (float64_t)hplus->data->data[new_waveform_index];
+		strain[index].x = (float64_t)hplus->data->data[new_waveform_index];
+		strain[index].y = (float64_t)hcross->data->data[new_waveform_index];
     }
 	
 	free(hcross->data->data); free(hplus->data->data);
