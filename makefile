@@ -20,7 +20,7 @@ WARNING_FLAG = -Wall -Wextra -Wconversion
 LAL_LINK    = -L/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/lib/ -llal -llalsimulation
 PYTHON_LINK = -L/home/michael.norman/.conda/envs/dragon/lib/python3.10/config-3.10-x86_64-linux-gnu -L/home/michael.norman/.conda/envs/dragon/lib -lpython3.10
 
-LINKER_FLAGS = -lcrypt -lpthread -ldl  -lutil -lrt -lm -Wl,-rpath,/home/michael.norman/.conda/envs/dragon/lib -Wl,-rpath,/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/lib/
+LINKER_FLAGS = -lcrypt -lpthread -ldl -lgsl -lutil -lrt -lm -Wl,-rpath,/home/michael.norman/.conda/envs/dragon/lib -Wl,-rpath,/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/lib/
 
 #OBJ_NAME specifies the name of our exectuable
 OBJ_NAME   = ./bin/main.out

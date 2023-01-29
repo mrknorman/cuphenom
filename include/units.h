@@ -3,15 +3,18 @@
 
 #include <stdarg.h>
 
-// Hardwired constants.
-#define PC_METERS 3.0856775807f*1e16f //-- a parsec in m
-#define MASS_SUN_KILOGRAMS 1.988409902147041637325262574352366540e30 // Mass of the sun in kilogram
-#define MASS_SUN_SECONDS 4.925491025543575903411922162094833998e-6 // Geometrized solar mass, s.
-#define MASS_SUN_METERS 1.476625061404649406193430731479084713e3 // Geometrized solar mass, m.
-#define G_SI 6.67430e-11  //-- the gravitational constant in m^3/(kilogram*s^2)
-#define C_SI 299792458.0f //-- the speed of light in m/s
-#define NUM_POLARIZATION_STATES 2
+// Hardwired constants:
+#define AU_METERS 149597870700.0 
+#define PC_METERS AU_METERS * (648000.0 / M_PI) //-- A parsec in m
+#define MPC_METERS PC_METERS * 10E6
+#define SIDEREAL_YEAR_SECONDS 365.256363004*24*3600
 
+#define G_SI 6.67408E-11  //-- the gravitational constant in m^3/(kilogram*s^2)
+#define MASS_SUN_KILOGRAMS   (4.0*M_PI*M_PI*AU_METERS*AU_METERS*AU_METERS) \
+						   / (G_SI*SIDEREAL_YEAR_SECONDS*SIDEREAL_YEAR_SECONDS)
+
+#define C_SI 299792458.0 //-- the speed of light in m/s
+#define NUM_POLARIZATION_STATES 2
 
 typedef double float64_t;
 
@@ -27,11 +30,11 @@ typedef struct {
 	float64_t kilograms;
 	float64_t seconds;
 	float64_t meters;
-} mass_t;
+} massUnit_t;
 
 inline float64_t kilogramsToSeconds(const float64_t mass_kilogram)
 {
-	return mass_kilogram*G_SI / pow(C_SI, 3.0);
+	return mass_kilogram*G_SI / (C_SI*C_SI*C_SI);
 }
 
 inline float64_t kilogramsToMeters(const float64_t mass_kilogram)
@@ -44,24 +47,24 @@ inline float64_t msunToKilograms(const float64_t mass_msun)
 	return mass_msun*MASS_SUN_KILOGRAMS;
 }
 
-mass_t initMassSolarMass(
+massUnit_t initMassSolarMass(
 	const float64_t mass_msun
 ) {
-	mass_t mass = {
+	massUnit_t mass = {
 		.msun      = mass_msun,
-		.kilograms = msunToKilograms  (mass.msun),
-		.seconds   = kilogramsToSeconds(mass.kilograms),
-		.meters    = kilogramsToMeters (mass.meters)
+		.kilograms = msunToKilograms   (mass.msun),
+		.seconds   = kilogramsToSeconds(msunToKilograms(mass_msun)),
+		.meters    = kilogramsToMeters (msunToKilograms(mass_msun))
 	};
 	
 	return mass;
 }
 
-mass_t scaleMass(
-	const mass_t    mass, 
+massUnit_t scaleMass(
+	const massUnit_t    mass, 
 	const float64_t scalar
 ) {
-	mass_t scaled = {
+	massUnit_t scaled = {
 		.msun      = mass.msun      * scalar,
 		.kilograms = mass.kilograms * scalar,
 		.seconds   = mass.seconds   * scalar,
@@ -71,11 +74,11 @@ mass_t scaleMass(
 	return scaled;
 }
 
-mass_t addMasses(
-	const mass_t mass_1, 
-	const mass_t mass_2
+massUnit_t addMasses(
+	const massUnit_t mass_1, 
+	const massUnit_t mass_2
 ) {
-	mass_t sum = {
+	massUnit_t sum = {
 		.msun      = mass_1.msun      + mass_2.msun,
 		.kilograms = mass_1.kilograms + mass_2.kilograms,
 		.seconds   = mass_1.seconds   + mass_2.seconds,
@@ -85,11 +88,11 @@ mass_t addMasses(
 	return sum;
 }
 
-mass_t subtractMasses(
-	const mass_t mass_1, 
-	const mass_t mass_2
+massUnit_t subtractMasses(
+	const massUnit_t mass_1, 
+	const massUnit_t mass_2
 ) {
-	mass_t difference = {	
+	massUnit_t difference = {	
 		.msun      = mass_1.msun      - mass_2.msun,
 		.kilograms = mass_1.kilograms - mass_2.kilograms,
 		.seconds   = mass_1.seconds   - mass_2.seconds,
@@ -99,11 +102,11 @@ mass_t subtractMasses(
 	return difference;
 }
 
-mass_t multiplyMasses(
-	const mass_t mass_1, 
-	const mass_t mass_2
+massUnit_t multiplyMasses(
+	const massUnit_t mass_1, 
+	const massUnit_t mass_2
 ) {
-	mass_t product = {
+	massUnit_t product = {
 		.msun      = mass_1.msun      * mass_2.msun,
 		.kilograms = mass_1.kilograms * mass_2.kilograms,
 		.seconds   = mass_1.seconds   * mass_2.seconds,
@@ -113,11 +116,11 @@ mass_t multiplyMasses(
 	return product;
 }
 
-mass_t divideMasses(
-	const mass_t mass_1, 
-	const mass_t mass_2
+massUnit_t divideMasses(
+	const massUnit_t mass_1, 
+	const massUnit_t mass_2
 ) {
-	mass_t quotient = {
+	massUnit_t quotient = {
 		.msun      = mass_1.msun      / mass_2.msun,
 		.kilograms = mass_1.kilograms / mass_2.kilograms,
 		.seconds   = mass_1.seconds   / mass_2.seconds,
@@ -128,21 +131,20 @@ mass_t divideMasses(
 }
 
 // Distance functions:
-
 typedef struct {
 	float64_t Mpc;
 	float64_t meters;
-} length_t;
+} lengthUnit_t;
 
 inline float64_t MpcToMeters(const float64_t length_mpc)
 {
-	return length_mpc*PC_METERS*10E6f;
+	return length_mpc*MPC_METERS;
 }
 
-length_t initLengthMpc(
+lengthUnit_t initLengthMpc(
 	const float64_t length_mpc
 ) {
-	length_t length = {
+	lengthUnit_t length = {
 		 .Mpc    = length_mpc,
 		 .meters = MpcToMeters(length.Mpc)
 	 };
@@ -150,11 +152,11 @@ length_t initLengthMpc(
 	return length;
 }
 
-length_t scaleLength(
-	const length_t  length, 
+lengthUnit_t scaleLength(
+	const lengthUnit_t  length, 
 	const float64_t scalar
 ) {
-	length_t scaled = {
+	lengthUnit_t scaled = {
 		.Mpc    = length.Mpc    * scalar,
 		.meters = length.meters * scalar
 	};
@@ -231,5 +233,38 @@ timeUnit_t scaleTime(
 	
 	return scaled;
 }
+
+// Frequency Functions:
+typedef struct {
+	float64_t hertz;
+} frequencyUnit_t;
+
+frequencyUnit_t initFrequencyHertz(
+	float64_t frequency_hertz
+	) {
+	
+	frequencyUnit_t frequency = {
+		 .hertz = frequency_hertz
+	 };
+	
+	return frequency;
+}
+
+// Angle Functions:
+typedef struct {
+	float64_t radians;
+} angularUnit_t;
+
+angularUnit_t initAngleRadians(
+	float64_t angle_radians
+	) {
+	
+	angularUnit_t angle = {
+		 .radians = angle_radians
+	 };
+	
+	return angle;
+}
+
 
 #endif

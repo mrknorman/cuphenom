@@ -5,17 +5,18 @@
 #include <lal/LALSimInspiral.h>
 
 void generatePhenomLAL(
-    const mass_t        mass_1, 
-    const mass_t        mass_2, 
-    const float64_t     sample_rate_hertz, 
-    const timeUnit_t    duration, 
-    const float64_t     inclination, 
-    const length_t      distance, 
-          float64_2_t **ret_strain
+	const Approximant       approximant,
+    const massUnit_t        mass_1, 
+    const massUnit_t        mass_2, 
+    const frequencyUnit_t   sample_rate, 
+    const timeUnit_t        duration, 
+    const angularUnit_t     inclination, 
+    const lengthUnit_t      distance, 
+          float64_2_t     **ret_strain
     ) {
 	
 	const int32_t num_samples = 
-		(int32_t)floor(sample_rate_hertz*duration.seconds);
+		(int32_t)floor(sample_rate.hertz*duration.seconds);
 	
 	REAL8TimeSeries *hplus  = NULL;
 	REAL8TimeSeries *hcross = NULL;
@@ -31,17 +32,16 @@ void generatePhenomLAL(
 	REAL8 longAscNodes = 0.0;
 	REAL8 eccentricity = 0.0;
 	REAL8 meanPerAno   = 0.0;
-	REAL8 deltaT       = 1.0/sample_rate_hertz;
+	REAL8 deltaT       = 1.0/sample_rate.hertz;
 	REAL8 f_min        = 
 		calcMinimumFrequency(
 			mass_1, 
 			mass_2, 
 			duration
-		);
+		).hertz;
 	
 	REAL8        f_ref       = 0.0;
 	LALDict     *extraParams = NULL;
-	Approximant  approximant = IMRPhenomXPHM;
 	
 	//Converting to SI:
 		
@@ -57,7 +57,7 @@ void generatePhenomLAL(
 		S2y,
 		S2z,
 		distance.meters,
-		inclination,
+		inclination.radians,
 		phiRef,
 		longAscNodes,
 		eccentricity,
