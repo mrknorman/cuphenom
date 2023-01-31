@@ -142,7 +142,7 @@ int ZombiePhenomDGenerateFD(
      
    print_timer("2", &timer);
 
-   size_t num_frequency_samples = 0;
+   size_t num_strain_axis_samples = 0;
    UINT4 offset = 0; // Index shift between freqs and the frequency series
    REAL8Sequence *freqs = NULL;
      
@@ -150,19 +150,19 @@ int ZombiePhenomDGenerateFD(
     if (deltaF > 0)  
     { 
         // Set up output array with size closest power of 2:
-        num_frequency_samples = calcNextPow2(f_max / deltaF) + 1;
+        num_strain_axis_samples = calcNextPow2(f_max / deltaF) + 1;
        
         // Coalesce at gps_time = 0:
         // Shift by overall length in time:  
         gps_time = addTimes(2, gps_time, initTimeSeconds(-1. / deltaF));
         
-         *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, 0.0, deltaF, &lalStrainUnit, num_frequency_samples);
+         *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, 0.0, deltaF, &lalStrainUnit, num_strain_axis_samples);
 
         // Recreate freqs using only the lower and upper bounds
         size_t iStart = (size_t) (f_min / deltaF);
         size_t iStop = (size_t) (f_max / deltaF);
        
-     XLAL_CHECK ( (iStop<=num_frequency_samples) && (iStart<=iStop), XLAL_EDOM, "minimum freq index %zu and maximum freq index %zu do not fulfill 0<=ind_min<=ind_max<=htilde->data>length=%zu.", iStart, iStop, num_frequency_samples);
+     XLAL_CHECK ( (iStop<=num_strain_axis_samples) && (iStart<=iStop), XLAL_EDOM, "minimum freq index %zu and maximum freq index %zu do not fulfill 0<=ind_min<=ind_max<=htilde->data>length=%zu.", iStart, iStop, num_strain_axis_samples);
      freqs = XLALCreateREAL8Sequence(iStop - iStart);
      if (!freqs)
        XLAL_ERROR(XLAL_EFUNC, "Frequency array allocation failed.");
@@ -170,9 +170,9 @@ int ZombiePhenomDGenerateFD(
        freqs->data[i-iStart] = i*deltaF;
      offset = iStart;
    } else { // freqs contains frequencies with non-uniform spacing; we start at lowest given frequency
-     num_frequency_samples = freqs_in->length;
-     *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, f_min, deltaF, &lalStrainUnit, num_frequency_samples);
-     XLAL_CHECK ( *htilde, XLAL_ENOMEM, "Failed to allocated waveform COMPLEX16FrequencySeries of length %zu from sequence.", num_frequency_samples);
+     num_strain_axis_samples = freqs_in->length;
+     *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, f_min, deltaF, &lalStrainUnit, num_strain_axis_samples);
+     XLAL_CHECK ( *htilde, XLAL_ENOMEM, "Failed to allocated waveform COMPLEX16FrequencySeries of length %zu from sequence.", num_strain_axis_samples);
      offset = 0;
      freqs = XLALCreateREAL8Sequence(freqs_in->length);
      if (!freqs)
@@ -183,7 +183,7 @@ int ZombiePhenomDGenerateFD(
      
     print_timer("3", &timer);
   
-   memset((*htilde)->data->data, 0, num_frequency_samples * sizeof(COMPLEX16));
+   memset((*htilde)->data->data, 0, num_strain_axis_samples * sizeof(COMPLEX16));
     
    XLALUnitMultiply(&((*htilde)->sampleUnits), &((*htilde)->sampleUnits), &lalSecondUnit);
   
@@ -218,30 +218,30 @@ int ZombiePhenomDGenerateFD(
    // was not available when PhenomD was tuned.
    pn->v[6] -= (Subtract3PNSS(m1, m2, M, eta, chi1, chi2) * pn->v[0]) * testGRcor;
   
-   PhiInsPrefactors phi_prefactors;
-   status = init_phi_ins_prefactors(&phi_prefactors, pPhi, pn);
+   PhiInsPrefactors phase_prefactors;
+   status = init_phi_ins_prefactors(&phase_prefactors, pPhi, pn);
    XLAL_CHECK(XLAL_SUCCESS == status, status, "init_phi_ins_prefactors failed");
      
     print_timer("4", &timer);
   
    // Compute coefficients to make phase C^1 continuous (phase and first derivative)
-   ComputeIMRPhenDPhaseConnectionCoefficients(pPhi, pn, &phi_prefactors, 1.0, 1.0);
+   ComputeIMRPhenDPhaseConnectionCoefficients(pPhi, pn, &phase_prefactors, 1.0, 1.0);
   
    //time shift so that peak amplitude is approximately at t=0
    //For details see https://www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview/timedomain
    const double t0 = DPhiMRD(pAmp->fmaxCalc, pPhi, 1.0, 1.0);
   
-   AmpInsPrefactors amp_prefactors;
-   status = init_amp_ins_prefactors(&amp_prefactors, pAmp);
+   AmpInsPrefactors amplitude_prefactors;
+   status = init_amp_ins_prefactors(&amplitude_prefactors, pAmp);
    XLAL_CHECK(XLAL_SUCCESS == status, status, "init_amp_ins_prefactors failed");
   
    // incorporating fRef
-   const double MfRef = M_sec * fRef;
-   UsefulPowers powers_of_fRef;
-   status = init_useful_powers(&powers_of_fRef, MfRef);
-   XLAL_CHECK(XLAL_SUCCESS == status, status, "init_useful_powers failed for MfRef");
+   const double reference_mass_frequency = M_sec * fRef;
+   useful_powers_s powers_of_fRef;
+   status = init_useful_powers(&powers_of_fRef, reference_mass_frequency);
+   XLAL_CHECK(XLAL_SUCCESS == status, status, "init_useful_powers failed for reference_mass_frequency");
     
-   const double phifRef = IMRPhenDPhase(MfRef, pPhi, pn, &powers_of_fRef, &phi_prefactors, 1.0, 1.0);
+   const double phifRef = IMRPhenDPhase(reference_mass_frequency, pPhi, pn, &powers_of_fRef, &phase_prefactors, 1.0, 1.0);
   
    // factor of 2 b/c phi0 is orbital phase
    const double phi_precalc = 2.*phi0 + phifRef;
@@ -265,7 +265,7 @@ int ZombiePhenomDGenerateFD(
        double ampT = amp_tidal->data[i];
        int j = i + offset; // shift index for frequency series if needed
   
-       UsefulPowers powers_of_f;
+       useful_powers_s powers_of_f;
        status_in_for = init_useful_powers(&powers_of_f, Mf);
        if (XLAL_SUCCESS != status_in_for)
        {
@@ -273,9 +273,9 @@ int ZombiePhenomDGenerateFD(
          status = status_in_for;
        }
        else {
-         double amp = IMRPhenDAmplitude(Mf, pAmp, &powers_of_f, &amp_prefactors);
-        double phi = IMRPhenDPhase(Mf, pPhi, pn, &powers_of_f, &phi_prefactors, 1.0, 1.0);
-         phi -= t0*(Mf-MfRef) + phi_precalc;
+         double amp = IMRPhenDAmplitude(Mf, pAmp, &powers_of_f, &amplitude_prefactors);
+        double phi = IMRPhenDPhase(Mf, pPhi, pn, &powers_of_f, &phase_prefactors, 1.0, 1.0);
+         phi -= t0*(Mf-reference_mass_frequency) + phi_precalc;
          ((*htilde)->data->data)[j] = amp0 * (amp+2*sqrt(LAL_PI/5.)*ampT) * cexp(-I * phi);
        }
      }
@@ -289,7 +289,7 @@ int ZombiePhenomDGenerateFD(
        double Mf = M_sec * freqs->data[i];
        int j = i + offset; // shift index for frequency series if needed
   
-       UsefulPowers powers_of_f;
+       useful_powers_s powers_of_f;
        status_in_for = init_useful_powers(&powers_of_f, Mf);
        if (XLAL_SUCCESS != status_in_for)
        {
@@ -297,9 +297,9 @@ int ZombiePhenomDGenerateFD(
          status = status_in_for;
        }
        else {
-         double amp = IMRPhenDAmplitude(Mf, pAmp, &powers_of_f, &amp_prefactors);
-         double phi = IMRPhenDPhase(Mf, pPhi, pn, &powers_of_f, &phi_prefactors, 1.0, 1.0);
-         phi -= t0*(Mf-MfRef) + phi_precalc;
+         double amp = IMRPhenDAmplitude(Mf, pAmp, &powers_of_f, &amplitude_prefactors);
+         double phi = IMRPhenDPhase(Mf, pPhi, pn, &powers_of_f, &phase_prefactors, 1.0, 1.0);
+         phi -= t0*(Mf-reference_mass_frequency) + phi_precalc;
          ((*htilde)->data->data)[j] = amp0 * amp * cexp(-I * phi); 
        }
      }
@@ -411,66 +411,57 @@ int cuPhenomDGenerateFD(
     if (eta > 0.25 || eta < 0.0)
         XLAL_ERROR(XLAL_EDOM, "Unphysical eta. Must be between 0. and 0.25\n");
 
-    const double M_sec = M * LAL_MTSUN_SI;
+    const double total_mass_seconds = M * LAL_MTSUN_SI;
 
     /* Compute the amplitude pre-factor */
     const double amp0 = 2. * sqrt(5. / (64.*LAL_PI)) * M * LAL_MRSUN_SI * M * LAL_MTSUN_SI / distance;
-
-
+    
     print_timer("2", &timer);
 
-    size_t num_frequency_samples = 0;
+    int32_t num_strain_axis_samples = 0;
     int32_t offset = 0; // Index shift between freqs and the frequency series
     REAL8Sequence *freqs = NULL;
-    
-    
-    
-    
-    
+        
+    frequencyUnit_t starting_frequency = initFrequencyHertz(f_min);
+    frequencyUnit_t ending_frequency   = initFrequencyHertz(f_max);
+    frequencyUnit_t frequency_interval = initFrequencyHertz(deltaF);
     
     if (deltaF > 0) // Freqs contains uniform frequency grid with spacing deltaF; we start at frequency 0:
     { 
         // Set up output array with size closest power of 2:
-        num_frequency_samples = calcNextPow2(f_max / deltaF) + 1;
-        *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, 0.0, deltaF, &lalStrainUnit, num_frequency_samples);
+        num_strain_axis_samples = calcNextPow2(f_max / deltaF) + 1;
+        *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, 0.0, deltaF, &lalStrainUnit, num_strain_axis_samples);
         
         // Coalesce at gps_time = 0:
         // Shift by overall length in time:  
         gps_time = addTimes(2, gps_time, initTimeSeconds(-1. / deltaF));
+        
+        offset = (size_t) (f_min / deltaF);
     }
     else // freqs contains frequencies with non-uniform spacing; we start at lowest given frequency
     {
-        num_frequency_samples = freqs_in->length;
-        *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, f_min, deltaF, &lalStrainUnit, num_frequency_samples);
+        num_strain_axis_samples = freqs_in->length;
+        *htilde = XLALCreateCOMPLEX16FrequencySeries("htilde: FD waveform", (LIGOTimeGPS){ 0, 0 }, f_min, deltaF, &lalStrainUnit, num_strain_axis_samples);
         freqs->data = freqs_in->data;
         offset = 0;
     }
     
-    complex float *strain_fd      = NULL;
-    complex float *frequency_axis = NULL;
+    complex float *strain_fd_g      = NULL;
     
-    if (deltaF > 0)  
-    { 
-
-
-
-
-        // Recreate freqs using only the lower and upper bounds
-        size_t iStart = (size_t) (f_min / deltaF);
-        size_t iStop = (size_t) (f_max / deltaF);
-
-        XLAL_CHECK ( (iStop<=num_frequency_samples) && (iStart<=iStop), XLAL_EDOM, "minimum freq index %zu and maximum freq index %zu do not fulfill 0<=ind_min<=ind_max<=htilde->data>length=%zu.", iStart, iStop, num_frequency_samples);
-        freqs = XLALCreateREAL8Sequence(iStop - iStart);
-        for (size_t i = iStart; i < iStop; i++)
-            freqs->data[i-iStart] = i*deltaF;
-        offset = iStart;
-    } 
-
+    int32_t  num_frequency_axis_samples = 0;
+    float   *frequency_axis_hertz_g = NULL;
+    
+    generatePhenomD(
+        starting_frequency,
+        ending_frequency,
+        frequency_interval,
+        num_strain_axis_samples,
+        &num_frequency_axis_samples,
+        &frequency_axis_hertz_g,
+        &strain_fd_g
+    );
+    
     print_timer("3", &timer);
-
-    memset((*htilde)->data->data, 0, num_frequency_samples * sizeof(COMPLEX16));
-
-    XLALUnitMultiply(&((*htilde)->sampleUnits), &((*htilde)->sampleUnits), &lalSecondUnit);
 
     // Calculate phenomenological parameters
     const double finspin = ZombFinalSpin0815(eta, chi1, chi2); //FinalSpin0815 - 0815 is like a version number
@@ -479,18 +470,18 @@ int cuPhenomDGenerateFD(
     XLAL_PRINT_WARNING("Final spin (Mf=%g) and ISCO frequency of this system_properties are small, \
           the model might misbehave here.", finspin);
 
-    IMRPhenomDAmplitudeCoefficients *pAmp;
-    pAmp = XLALMalloc(sizeof(IMRPhenomDAmplitudeCoefficients));
-    ZombComputeIMRPhenomDAmplitudeCoefficients(pAmp, eta, chi1, chi2, finspin);
-    if (!pAmp) XLAL_ERROR(XLAL_EFUNC);
+    IMRPhenomDAmplitudeCoefficients *amplitude_coefficients;
+    amplitude_coefficients = XLALMalloc(sizeof(IMRPhenomDAmplitudeCoefficients));
+    ZombComputeIMRPhenomDAmplitudeCoefficients(amplitude_coefficients, eta, chi1, chi2, finspin);
+    if (!amplitude_coefficients) XLAL_ERROR(XLAL_EFUNC);
     if (extraParams==NULL)
     extraParams=XLALCreateDict();
     XLALSimInspiralWaveformParamsInsertPNSpinOrder(extraParams,LAL_SIM_INSPIRAL_SPIN_ORDER_35PN);
-    IMRPhenomDPhaseCoefficients *pPhi;
-    pPhi = XLALMalloc(sizeof(IMRPhenomDPhaseCoefficients));
-    ComputeIMRPhenomDPhaseCoefficients(pPhi, eta, chi1, chi2, finspin, extraParams);
+    IMRPhenomDPhaseCoefficients *phase_coefficients;
+    phase_coefficients = XLALMalloc(sizeof(IMRPhenomDPhaseCoefficients));
+    ComputeIMRPhenomDPhaseCoefficients(phase_coefficients, eta, chi1, chi2, finspin, extraParams);
 
-    if (!pPhi) XLAL_ERROR(XLAL_EFUNC);
+    if (!phase_coefficients) XLAL_ERROR(XLAL_EFUNC);
     PNPhasingSeries *pn = NULL;
     XLALSimInspiralTaylorF2AlignedPhasing(&pn, m1, m2, chi1, chi2, extraParams);
     if (!pn) XLAL_ERROR(XLAL_EFUNC);
@@ -503,30 +494,30 @@ int cuPhenomDGenerateFD(
     // was not available when PhenomD was tuned.
     pn->v[6] -= (Subtract3PNSS(m1, m2, M, eta, chi1, chi2) * pn->v[0]) * testGRcor;
 
-    PhiInsPrefactors phi_prefactors;
-    status = init_phi_ins_prefactors(&phi_prefactors, pPhi, pn);
+    PhiInsPrefactors phase_prefactors;
+    status = init_phi_ins_prefactors(&phase_prefactors, phase_coefficients, pn);
     XLAL_CHECK(XLAL_SUCCESS == status, status, "init_phi_ins_prefactors failed");
 
     print_timer("4", &timer);
 
     // Compute coefficients to make phase C^1 continuous (phase and first derivative)
-    ComputeIMRPhenDPhaseConnectionCoefficients(pPhi, pn, &phi_prefactors, 1.0, 1.0);
+    ComputeIMRPhenDPhaseConnectionCoefficients(phase_coefficients, pn, &phase_prefactors, 1.0, 1.0);
 
     //time shift so that peak amplitude is approximately at t=0
     //For details see https://www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview/timedomain
-    const double t0 = DPhiMRD(pAmp->fmaxCalc, pPhi, 1.0, 1.0);
+    const double phase_shift = DPhiMRD(amplitude_coefficients->fmaxCalc, phase_coefficients, 1.0, 1.0);
 
-    AmpInsPrefactors amp_prefactors;
-    status = init_amp_ins_prefactors(&amp_prefactors, pAmp);
+    AmpInsPrefactors amplitude_prefactors;
+    status = init_amp_ins_prefactors(&amplitude_prefactors, amplitude_coefficients);
     XLAL_CHECK(XLAL_SUCCESS == status, status, "init_amp_ins_prefactors failed");
 
     // incorporating fRef
-    const double MfRef = M_sec * fRef;
-    UsefulPowers powers_of_fRef;
-    status = init_useful_powers(&powers_of_fRef, MfRef);
-    XLAL_CHECK(XLAL_SUCCESS == status, status, "init_useful_powers failed for MfRef");
+    const double reference_mass_frequency = total_mass_seconds * fRef;
+    useful_powers_s powers_of_fRef;
+    status = init_useful_powers(&powers_of_fRef, reference_mass_frequency);
+    XLAL_CHECK(XLAL_SUCCESS == status, status, "init_useful_powers failed for reference_mass_frequency");
 
-    const double phifRef = IMRPhenDPhase(MfRef, pPhi, pn, &powers_of_fRef, &phi_prefactors, 1.0, 1.0);
+    const double phifRef = IMRPhenDPhase(reference_mass_frequency, phase_coefficients, pn, &powers_of_fRef, &phase_prefactors, 1.0, 1.0);
 
     // factor of 2 b/c phi0 is orbital phase
     const double phi_precalc = 2.*phi0 + phifRef;
@@ -536,66 +527,42 @@ int cuPhenomDGenerateFD(
     /* Now generate the waveform */
 
     print_timer("5", &timer);
-
-    if (NRTidal_version == NRTidalv2_V) 
+    
+    sumPhenomDFrequencies(
+        strain_fd_g,
+        total_mass_seconds,
+        *amplitude_coefficients,
+        amplitude_prefactors,
+        *phase_coefficients, 
+        phase_prefactors, 
+        offset,
+        frequency_axis_hertz_g,
+        num_frequency_axis_samples,
+        phase_shift,
+        amp0,
+        reference_mass_frequency,
+        phi_precalc
+    );
+    
+    cudaFree(frequency_axis_hertz_g);
+    
+    complex float *strain_fd = NULL;
+    cudaToHost(
+        strain_fd_g, 
+        sizeof(complex float),
+        num_strain_axis_samples,
+        &strain_fd
+    );
+    
+    for (int32_t index = 0; index < num_strain_axis_samples; index++) 
     {
-        /* Generate the tidal amplitude (Eq. 24 of arxiv: 1905.06011) to add to BBH baseline; only for IMRPhenomD_NRTidalv2 */
-        amp_tidal = XLALCreateREAL8Sequence(freqs->length);
-        ret = XLALSimNRTunedTidesFDTidalAmplitudeFrequencySeries(amp_tidal, freqs, m1, m2, lambda1, lambda2);
-        XLAL_CHECK(XLAL_SUCCESS == ret, ret, "Failed to generate tidal amplitude series to construct IMRPhenomD_NRTidalv2 waveform.");
-        /* Generated tidal amplitude corrections */
-        #pragma omp parallel for
-        for (UINT4 i=0; i<freqs->length; i++) 
-        { // loop over frequency points in sequence
-            double Mf = M_sec * freqs->data[i];
-            double ampT = amp_tidal->data[i];
-            int j = i + offset; // shift index for frequency series if needed
-
-            UsefulPowers powers_of_f;
-            status_in_for = init_useful_powers(&powers_of_f, Mf);
-            if (XLAL_SUCCESS != status_in_for)
-            {
-                XLALPrintError("init_useful_powers failed for Mf, status_in_for=%d", status_in_for);
-                status = status_in_for;
-            }
-            else 
-            {
-                double amp = IMRPhenDAmplitude(Mf, pAmp, &powers_of_f, &amp_prefactors);
-                double phi = IMRPhenDPhase(Mf, pPhi, pn, &powers_of_f, &phi_prefactors, 1.0, 1.0);
-                phi -= t0*(Mf-MfRef) + phi_precalc;
-                ((*htilde)->data->data)[j] = amp0 * (amp+2*sqrt(LAL_PI/5.)*ampT) * cexp(-I * phi);
-            }
-        }
-    } 
-    else {
-        #pragma omp parallel for
-        for (UINT4 i=0; i<freqs->length; i++) 
-        { // loop over frequency points in sequence
-            double Mf = M_sec * freqs->data[i];
-            int j = i + offset; // shift index for frequency series if needed
-
-            UsefulPowers powers_of_f;
-            status_in_for = init_useful_powers(&powers_of_f, Mf);
-            if (XLAL_SUCCESS != status_in_for)
-            {
-                XLALPrintError("init_useful_powers failed for Mf, status_in_for=%d", status_in_for);
-                status = status_in_for;
-            }
-            else 
-            {
-                double amp = IMRPhenDAmplitude(Mf, pAmp, &powers_of_f, &amp_prefactors);
-                double phi = IMRPhenDPhase(Mf, pPhi, pn, &powers_of_f, &phi_prefactors, 1.0, 1.0);
-                phi -= t0*(Mf-MfRef) + phi_precalc;
-                ((*htilde)->data->data)[j] = amp0 * amp * cexp(-I * phi); 
-            }
-        }
+        (*htilde)->data->data[index] = (complex double)strain_fd[index];
     }
-
+    
     print_timer("6", &timer);
 
-
-    LALFree(pAmp);
-    LALFree(pPhi);
+    LALFree(amplitude_coefficients);
+    LALFree(phase_coefficients);
     LALFree(pn);
     XLALDestroyREAL8Sequence(freqs);
     XLALDestroyREAL8Sequence(amp_tidal);

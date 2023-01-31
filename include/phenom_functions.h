@@ -27,6 +27,32 @@ typedef struct {
     double lambda;
 } companion_s;
 
+int32_t generatePhenomD(
+    const frequencyUnit_t  starting_frequency,
+    const frequencyUnit_t  ending_frequency,
+    const frequencyUnit_t  frequency_interval,
+    const int32_t          num_strain_axis_samples,
+          int32_t         *ret_num_frequency_axis_samples,
+          float          **ret_frequency_axis_hertz,
+          complex float  **ret_strain_fd_g
+    );
+
+int32_t sumPhenomDFrequencies(
+          cuFloatComplex                  *strain_fd_g,
+    const float                            total_mass_seconds,
+    const IMRPhenomDAmplitudeCoefficients  amplitude_coefficients,
+    const AmpInsPrefactors                 amplitude_prefactors,
+    const IMRPhenomDPhaseCoefficients      phase_coefficients, 
+    const PhiInsPrefactors                 phase_prefactors, 
+    const int32_t                          offset,
+    const float                           *frequency_axis_hertz,
+    const int32_t                          num_frequency_axis_samples,
+    const float                            phase_shift,
+    const float                            amp0,
+    const float                            reference_mass_frequency,
+    const float                            phi_precalc
+);
+
 typedef struct {
     
     // ~~~~ Binary Companions ~~~~~ //

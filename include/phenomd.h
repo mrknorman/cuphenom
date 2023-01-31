@@ -1,4 +1,5 @@
 #include "phenomd_data.h"
+#include "phenomd_structures.h"
 
 static inline double Square(
     const double number
@@ -64,85 +65,7 @@ void *calcCoefficients(
 /*************************** Amplitude functions ******************************/
 
 //////////////////// Amplitude: Merger-Ringdown functions //////////////////////
- 
-typedef struct tagIMRPhenomDAmplitudeCoefficients {
-   double eta;         // symmetric mass-ratio
-   double etaInv;      // 1/eta
-   double chi12;       // chi1*chi1;
-   double chi22;       // chi2*chi2;
-   double eta2;        // eta*eta;
-   double eta3;        // eta*eta*eta;
-   double Seta;        // sqrt(1.0 - 4.0*eta);
-   double SetaPlus1;   // (1.0 + Seta);
-   double chi1, chi2;  // dimensionless aligned spins, convention m1 >= m2.
-   double q;           // asymmetric mass-ratio (q>=1)
-   double chi;         // PN reduced spin parameter
-   double fRD;         // ringdown frequency
-   double fDM;         // imaginary part of the ringdown frequency (damping time)
-  
-   double fmaxCalc;    // frequency at which the mrerger-ringdown amplitude is maximum
-  
-   // Phenomenological inspiral amplitude coefficients
-   double inspiral[NUM_AMPLITUDE_INSPIRAL_COEFFICIENTS];
-  
-   // Phenomenological intermediate amplitude coefficients
-   double intermediate[NUM_DELTA_TERMS];
-  
-   // Phenomenological merger-ringdown amplitude coefficients
-   double merger_ringdown[NUM_AMPLITUDE_MERGER_RINGDOWN_COEFFICIENTS];
-  
-   // Coefficients for collocation method. Used in intermediate amplitude model
-   double f1, f2, f3;
-   double v1, v2, v3;
-   double d1, d2;
-  
-   // Transition frequencies for amplitude
-   // We don't *have* to store them, but it may be clearer.
-   double fInsJoin;    // Ins = Inspiral
-   double fMRDJoin;    // MRD = Merger-Ringdown
-} IMRPhenomDAmplitudeCoefficients;
 
-/**
- * used to cache the recurring (frequency-independent) prefactors of AmpInsAnsatz. Must be inited with a call to
- * init_amp_ins_prefactors(&prefactors, p);
- */
-typedef struct tagAmpInsPrefactors
-{
-     double two_thirds;
-     double one;
-     double four_thirds;
-     double five_thirds;
-     double two;
-     double seven_thirds;
-     double eight_thirds;
-     double three;
-
-     double amp0;
-} AmpInsPrefactors;
-
-typedef struct tagPhiInsPrefactors
-{
-    double initial_phasing;
-    double third;
-    double third_with_logv;
-    double two_thirds;
-    double one;
-    double four_thirds;
-    double five_thirds;
-    double two;
-    double logv;
-    double minus_third;
-    double minus_two_thirds;
-    double minus_one;
-    double minus_four_thirds;
-    double minus_five_thirds;
-} PhiInsPrefactors;
-
-/**
- * Structure for passing around PN phasing coefficients.
- * For use with the TaylorF2 waveform.
- */
-#define PN_PHASING_SERIES_MAX_ORDER 15
 /**
 * Subtract 3PN spin-spin term below as this is in LAL's TaylorF2 implementation
 * (LALSimInspiralPNCoefficients.c -> XLALSimInspiralPNPhasing_F2), but
@@ -181,7 +104,6 @@ static double ZombEradRational0815_s(double eta, double s)
              (1. + (-0.0030302335878845507 - 2.0066110851351073 * eta + 7.7050567802399215 * eta2) * s)) /
             (1. + (-0.6714403054720589 - 1.4756929437702908 * eta + 7.304676214885011 * eta2) * s);
 }
-
 
 double ZombPhenomInternal_EradRational0815(double eta, double chi1, double chi2)
 {
@@ -238,25 +160,8 @@ typedef enum tagNRTidal_version_type {
   NoNRT_V /**< special case for PhenomPv2 BBH baseline */
 } NRTidal_version_type;
 
-typedef struct tagUsefulPowers
-{
-     //double sixth; //FP
-     double third;
-     double two_thirds;
-     double four_thirds;
-     double five_thirds;
-     double two;
-     double seven_thirds;
-     double eight_thirds;
-     double inv;
-     //double m_sixth; //FP
-     double m_seven_sixths;
-     double m_third;
-     double m_two_thirds;
-     double m_five_thirds;
-} UsefulPowers;
 
-UsefulPowers powers_of_pi;   
+useful_powers_s powers_of_pi;   
 
 ///////////////////////////// Amplitude: Intermediate functions ////////////////////////
  
@@ -271,7 +176,7 @@ UsefulPowers powers_of_pi;
  * in rho1_fun, rho2_fun, rho3_fun functions.
  * Amplitude is a re-expansion. See 1508.07253 and Equation 29, 30 and Appendix B arXiv:1508.07253 for details
  */
- double AmpInsAnsatz(double Mf, UsefulPowers * powers_of_Mf, AmpInsPrefactors * prefactors) {
+ double AmpInsAnsatz(double Mf, useful_powers_s * powers_of_Mf, AmpInsPrefactors * prefactors) {
   
    return 1 + powers_of_Mf->two_thirds * prefactors->two_thirds
        + powers_of_Mf->four_thirds * prefactors->four_thirds
@@ -316,7 +221,7 @@ double AmpIntAnsatz(
  * This function computes the IMR amplitude given phenom coefficients.
  * Defined in VIII. Full IMR Waveforms arXiv:1508.07253
  */
- double IMRPhenDAmplitude(double f, IMRPhenomDAmplitudeCoefficients *p, UsefulPowers *powers_of_f, AmpInsPrefactors * prefactors) {
+ double IMRPhenDAmplitude(double f, IMRPhenomDAmplitudeCoefficients *p, useful_powers_s *powers_of_f, AmpInsPrefactors * prefactors) {
    // Defined in VIII. Full IMR Waveforms arXiv:1508.07253
    // The inspiral, intermediate and merger-ringdown amplitude parts
   
@@ -349,7 +254,7 @@ double AmpIntAnsatz(
  * Take the AmpInsAnsatz expression and compute the first derivative
  * with respect to frequency to get the expression below.
  */
- double DAmpInsAnsatz(double Mf, UsefulPowers *powers_of_Mf, IMRPhenomDAmplitudeCoefficients* p) {
+ double DAmpInsAnsatz(double Mf, useful_powers_s *powers_of_Mf, IMRPhenomDAmplitudeCoefficients* p) {
    double eta = p->eta;
    double chi1 = p->chi1;
    double chi2 = p->chi2;
@@ -436,7 +341,7 @@ return eta*(3.4641016151377544 - 4.399247300629289*eta +
 }
 
 
- int init_useful_powers(UsefulPowers *p, double number)
+ int init_useful_powers(useful_powers_s *p, double number)
 {
    XLAL_CHECK(0 != p, XLAL_EFAULT, "p is NULL");
    XLAL_CHECK(number >= 0, XLAL_EDOM, "number must be non-negative");
@@ -543,7 +448,7 @@ void ComputeDeltasFromCollocation(IMRPhenomDAmplitudeCoefficients* p) {
     double dfx = 0.5*(f3 - f1);
     double f2 = f1 + dfx;
 
-    UsefulPowers powers_of_f1;
+    useful_powers_s powers_of_f1;
     int status = init_useful_powers(&powers_of_f1, f1);
     XLAL_CHECK_VOID ( status == XLAL_SUCCESS, XLAL_EFUNC, "Failed to initialize useful powers of f1.");
 
@@ -659,48 +564,6 @@ void ZombComputeIMRPhenomDAmplitudeCoefficients(IMRPhenomDAmplitudeCoefficients 
     ComputeDeltasFromCollocation(p);
 }
 
-typedef struct tagIMRPhenomDPhaseCoefficients {
-   double eta;         // symmetric mass-ratio
-   double etaInv;      // 1/eta
-   double eta2;        // eta*eta
-   double Seta;        // sqrt(1.0 - 4.0*eta);
-   double chi1, chi2;  // dimensionless aligned spins, convention m1 >= m2.
-   double q;           // asymmetric mass-ratio (q>=1)
-   double chi;         // PN reduced spin parameter
-   double fRD;         // ringdown frequency
-   double fDM;         // imaginary part of the ringdown frequency (damping time)
-  
-   // Phenomenological inspiral phase coefficients
-   double sigma1;
-   double sigma2;
-   double sigma3;
-   double sigma4;
-   double sigma5;
-  
-   // Phenomenological intermediate phase coefficients
-   double beta1;
-   double beta2;
-   double beta3;
-  
-   // Phenomenological merger-ringdown phase coefficients
-   double alpha1;
-   double alpha2;
-   double alpha3;
-   double alpha4;
-   double alpha5;
-  
-   // C1 phase connection coefficients
-   double C1Int;
-   double C2Int;
-   double C1MRD;
-   double C2MRD;
-  
-   // Transition frequencies for phase
-   double fInsJoin;    // Ins = Inspiral
-   double fMRDJoin;    // MRD = Merger-Ringdown
-}
-IMRPhenomDPhaseCoefficients;
-
 /**
  * This function computes the IMR phase given phenom coefficients.
  * Defined in VIII. Full IMR Waveforms arXiv:1508.07253
@@ -718,10 +581,10 @@ IMRPhenomDPhaseCoefficients;
  * as comments in the top of this file
  * Defined by Equation 27 and 28 arXiv:1508.07253
  */
- double PhiInsAnsatzInt(double Mf, UsefulPowers *powers_of_Mf, PhiInsPrefactors *prefactors, IMRPhenomDPhaseCoefficients *p, PNPhasingSeries *pn)
+ double PhiInsAnsatzInt(double Mf, useful_powers_s *powers_of_Mf, PhiInsPrefactors *prefactors, IMRPhenomDPhaseCoefficients *p, PNPhasingSeries *pn)
 {
    XLAL_CHECK(0 != pn, XLAL_EFAULT, "pn is NULL");
-  
+       
    // Assemble PN phasing series
    const double v = powers_of_Mf->third * powers_of_pi.third;
    const double logv = log(v);
@@ -743,7 +606,7 @@ IMRPhenomDPhaseCoefficients;
                             + prefactors->five_thirds * powers_of_Mf->five_thirds
                             + prefactors->two * powers_of_Mf->two
          ) * p->etaInv;
-  
+     
    return phasing;
 }
 
@@ -769,7 +632,7 @@ IMRPhenomDPhaseCoefficients;
  * Taulm = fDMlm/fDM22. Ratio of ringdown damping times.
  * Again, when Taulm = 1.0 then PhenomD is recovered.
  */
- double PhiMRDAnsatzInt(double f, IMRPhenomDPhaseCoefficients *p, double Rholm, double Taulm)
+double PhiMRDAnsatzInt(double f, IMRPhenomDPhaseCoefficients *p, double Rholm, double Taulm)
 {
    double sqrootf = sqrt(f);
    double fpow1_5 = f * sqrootf;
@@ -782,7 +645,7 @@ IMRPhenomDPhaseCoefficients;
                   + p->alpha4 * Rholm * atan((f - p->alpha5 * p->fRD) / (Rholm * p->fDM * Taulm));
 }
 
- double IMRPhenDPhase(double f, IMRPhenomDPhaseCoefficients *p, PNPhasingSeries *pn, UsefulPowers *powers_of_f, PhiInsPrefactors *prefactors, double Rholm, double Taulm)
+ double IMRPhenDPhase(double f, IMRPhenomDPhaseCoefficients *p, PNPhasingSeries *pn, useful_powers_s *powers_of_f, PhiInsPrefactors *prefactors, double Rholm, double Taulm)
 {
    // Defined in VIII. Full IMR Waveforms arXiv:1508.07253
    // The inspiral, intermendiate and merger-ringdown phase parts
@@ -791,12 +654,15 @@ IMRPhenomDPhaseCoefficients;
    if (f < p->fInsJoin)        // Inspiral range
    {
            double PhiIns = PhiInsAnsatzInt(f, powers_of_f, prefactors, p, pn);
+       
            return PhiIns;
    }
   
    if (f >= p->fMRDJoin) // MRD range
    {
            double PhiMRD = p->etaInv * PhiMRDAnsatzInt(f, p, Rholm, Taulm) + p->C1MRD + p->C2MRD * f;
+       
+
            return PhiMRD;
    }
   
@@ -976,7 +842,7 @@ IMRPhenomDPhaseCoefficients;
    double DPhiInt = DPhiIntAnsatz(PHI_fJoin_INS, p);
    p->C2Int = DPhiIns - DPhiInt;
   
-   UsefulPowers powers_of_fInsJoin;
+   useful_powers_s powers_of_fInsJoin;
    init_useful_powers(&powers_of_fInsJoin, PHI_fJoin_INS);
    p->C1Int = PhiInsAnsatzInt(PHI_fJoin_INS, &powers_of_fInsJoin, prefactors, p, pn)
      - etaInv * PhiIntAnsatz(PHI_fJoin_INS, p) - p->C2Int * PHI_fJoin_INS;
