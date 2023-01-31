@@ -20,7 +20,7 @@
 #define PHI_fJoin_INS 0.018
 
 //PI^(-1/6) [http://oeis.org/A093207]:
-#define PI_M_SIXTH 0.8263074871107581108331125856317241299
+#define PI_M_SIXTH cbrtf((float)M_PI)/sqrtf((float)M_PI)
 
 //PI^(1/3)
 #define CUBE_ROOT_PI cbrt((float)M_PI)

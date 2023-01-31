@@ -42,6 +42,12 @@ inline float64_t kilogramsToMeters(const float64_t mass_kilogram)
 	return mass_kilogram*G_SI / (C_SI*C_SI);
 }
 
+inline float64_t kilogramsToMsun(const float64_t mass_kilogram)
+{
+	return mass_kilogram/MASS_SUN_KILOGRAMS;
+}
+
+
 inline float64_t msunToKilograms(const float64_t mass_msun)
 {
 	return mass_msun*MASS_SUN_KILOGRAMS;
@@ -55,6 +61,19 @@ massUnit_t initMassSolarMass(
 		.kilograms = msunToKilograms   (mass.msun),
 		.seconds   = kilogramsToSeconds(msunToKilograms(mass_msun)),
 		.meters    = kilogramsToMeters (msunToKilograms(mass_msun))
+	};
+	
+	return mass;
+}
+
+massUnit_t initMassKilograms(
+	const float64_t mass_kilograms
+) {
+	massUnit_t mass = {
+		.msun      = kilogramsToMsun(mass_kilograms),
+		.kilograms = mass_kilograms,
+		.seconds   = kilogramsToSeconds(mass_kilograms),
+		.meters    = kilogramsToMeters (mass_kilograms)
 	};
 	
 	return mass;
@@ -141,12 +160,28 @@ inline float64_t MpcToMeters(const float64_t length_mpc)
 	return length_mpc*MPC_METERS;
 }
 
+inline float64_t MeterToMPc(const float64_t length_meters)
+{
+	return length_meters/MPC_METERS;
+}
+
 lengthUnit_t initLengthMpc(
 	const float64_t length_mpc
 ) {
 	lengthUnit_t length = {
 		 .Mpc    = length_mpc,
 		 .meters = MpcToMeters(length.Mpc)
+	 };
+	
+	return length;
+}
+
+lengthUnit_t initLengthMeters(
+	const float64_t length_meters
+) {
+	lengthUnit_t length = {
+		 .Mpc    = MeterToMPc(length_meters),
+		 .meters = length_meters
 	 };
 	
 	return length;

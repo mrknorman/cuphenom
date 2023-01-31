@@ -212,7 +212,9 @@ __device__ __forceinline__ useful_powers_s _initUsefulPowers(
     ) {
         
     // Consider changing pow(x,1/6.0) to cbrt(x) and sqrt(x) - might be faster
-    const float sixth = pow(one, 1.0f/6.0f);
+    const float sixth = sqrt(one) / cbrt(one);
+    
+    pow(one, 1.0f/6.0f);
     const float m_sixth = 1.0f/sixth;
     
     useful_powers_s powers;
@@ -535,9 +537,7 @@ __global__ void sumFrequenciesPhenomTidal(
             ) 
             - phase_shift*(mass_frequency.one - reference_mass_frequency) 
             + phi_precalc;
-            
-        //if (blockIdx.x * blockDim.x + threadIdx.x < 10) printf("Anz d %f \n", phase);
-        
+                
         // Convert values to cuFloatComplex:
         const cuFloatComplex phase_c = 
             (cuFloatComplex) 
@@ -617,9 +617,7 @@ __global__ void sumFrequenciesPhenom(
             ) 
             - phase_shift*(mass_frequency.one - reference_mass_frequency) 
             - phi_precalc;
-            
-        ///if (sample_index < 10) printf("|%i, %f, %f|", sample_index, amplitude, phase);
-                
+                        
         // Convert values to cuFloatComplex:
         const cuFloatComplex phase_c = 
             (cuFloatComplex) 

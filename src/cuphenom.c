@@ -31,8 +31,9 @@ frequencyUnit_t calcMinimumFrequency(
     return initFrequencyHertz(min_frequency_hertz);
 }
 
-#include "zombie_lal.h"
+#include "cuda_phenom.h"
 #include "lal_phenom.h"
+#include "zombie_phenom.h"
 
 void addLinearArray(
           float   *array, 
@@ -350,6 +351,8 @@ int32_t testRunTime(
     timer_s timer;
     start_timer("Timer", &timer);
     
+    printf("Test LAL runtime... \n");
+    //LAL
 	for (int32_t index = 0; index < num_tests; index++)
 	{
 		generatePhenomLAL(
@@ -365,7 +368,8 @@ int32_t testRunTime(
 		free(strain);
 	}	
     execution_time_lal = stop_timer(&timer);
-            	
+       
+    printf("Test cuda runtime... \n");
 	// CUDA:
 	for (int32_t index = 0; index < num_tests; index++)
 	{
@@ -394,13 +398,13 @@ int32_t testRunTime(
 
 int32_t main(){
 	const float64_t mass_1_msun         =   10.0;
-    const float64_t mass_2_msun         =  100.0;
+    const float64_t mass_2_msun         =   10.0;
     const float64_t sample_rate_hertz   = 8192.0;
-    const float64_t duration_seconds    =    1.0;
+    const float64_t duration_seconds    =    8.0;
     const float64_t inclination_radians =    1.0;
     const float64_t distance_mpc        =   1000;
 	
-	float64_2_t *lal_strain = NULL, *cuda_strain = NULL;
+	float64_2_t *lal_strain = NULL, *cuda_strain = NULL, *zombie_strain = NULL;
 		
 	const massUnit_t      mass_1      = initMassSolarMass(mass_1_msun);
 	const massUnit_t      mass_2      = initMassSolarMass(mass_2_msun);
@@ -437,7 +441,18 @@ int32_t main(){
 		distance, 
 		&cuda_strain
     );
-            
+    
+    generatePhenomZombie(
+		approximant,
+		mass_1,
+		mass_2, 
+		sample_rate, 
+		duration, 
+		inclination, 
+		distance, 
+		&zombie_strain
+    );
+    
 	float64_2_t *difference = malloc(sizeof(float64_2_t)*(size_t)num_samples);
 	float64_2_t  sum            = {.x = 0.0f, .y = 0.0f};
     float64_2_t  difference_sum = {.x = 0.0f, .y = 0.0f};
@@ -487,7 +502,7 @@ int32_t main(){
 		lal_strain,
 	    "lal_waveform",
 	    cuda_strain,
-		"cuda_waveform",
+		"zombie_waveform",
 	    num_samples,
         output_file_name
     );
@@ -502,7 +517,7 @@ int32_t main(){
 		duration,
 		inclination,
 		distance,
-		100
+		0
 	);
 	
 	return 0;

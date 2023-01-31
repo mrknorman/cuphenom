@@ -1,5 +1,5 @@
-#ifndef ZOMBIE_PHENOM_H
-#define ZOMBIE_PHENOM_H
+#ifndef _PHENOM_H
+#define _PHENOM_H
 
 #include <omp.h>
 
@@ -49,7 +49,7 @@ void Nudge(
     }
 }
 
-int ZombiePhenomDGenerateFD(
+int PhenomDGenerateFD(
      COMPLEX16FrequencySeries **htilde,   // [out] FD waveform.
      const REAL8Sequence *freqs_in,       // Frequency points at which to evaluate the waveform (Hz)
      double deltaF,                       // If deltaF > 0, the frequency points given in freqs are uniformly spaced with
@@ -341,9 +341,6 @@ int cuPhenomDGenerateFD(
      LALDict *extraParams,                // linked list containing the extra testing GR parameters
      NRTidal_version_type NRTidal_version // NRTidal version; either NRTidal_V or NRTidalv2_V or NoNRT_V in case of BBH baseline
 ) {
-    timer_s timer;
-    start_timer("Outside", &timer);
-
     timeUnit_t gps_time = initTimeSeconds(0.0f);
 
     // Make a pointer to LALDict to circumvent a memory leak
@@ -390,8 +387,6 @@ int cuPhenomDGenerateFD(
         }
     }
 
-    print_timer("1", &timer);
-
     int status = init_useful_powers(&powers_of_pi, LAL_PI);
     XLAL_CHECK(XLAL_SUCCESS == status, status, "Failed to initiate useful powers of pi.");
 
@@ -416,8 +411,6 @@ int cuPhenomDGenerateFD(
     /* Compute the amplitude pre-factor */
     const double amp0 = 2. * sqrt(5. / (64.*LAL_PI)) * M * LAL_MRSUN_SI * M * LAL_MTSUN_SI / distance;
     
-    print_timer("2", &timer);
-
     int32_t num_strain_axis_samples = 0;
     int32_t offset = 0; // Index shift between freqs and the frequency series
     REAL8Sequence *freqs = NULL;
@@ -461,8 +454,6 @@ int cuPhenomDGenerateFD(
         &strain_fd_g
     );
     
-    print_timer("3", &timer);
-
     // Calculate phenomenological parameters
     const double finspin = ZombFinalSpin0815(eta, chi1, chi2); //FinalSpin0815 - 0815 is like a version number
 
@@ -498,8 +489,6 @@ int cuPhenomDGenerateFD(
     status = init_phi_ins_prefactors(&phase_prefactors, phase_coefficients, pn);
     XLAL_CHECK(XLAL_SUCCESS == status, status, "init_phi_ins_prefactors failed");
 
-    print_timer("4", &timer);
-
     // Compute coefficients to make phase C^1 continuous (phase and first derivative)
     ComputeIMRPhenDPhaseConnectionCoefficients(phase_coefficients, pn, &phase_prefactors, 1.0, 1.0);
 
@@ -525,8 +514,6 @@ int cuPhenomDGenerateFD(
     int status_in_for = XLAL_SUCCESS;
     int ret = XLAL_SUCCESS;
     /* Now generate the waveform */
-
-    print_timer("5", &timer);
     
     sumPhenomDFrequencies(
         strain_fd_g,
@@ -554,13 +541,36 @@ int cuPhenomDGenerateFD(
         &strain_fd
     );
     
+    if (deltaF > 0) // Freqs contains uniform frequency grid with spacing deltaF; we start at frequency 0:
+    { 
+        *htilde = 
+            XLALCreateCOMPLEX16FrequencySeries(
+                "htilde: FD waveform", 
+                (LIGOTimeGPS){ 0, 0 }, 
+                0.0, 
+                deltaF, 
+                &lalStrainUnit, 
+                num_strain_axis_samples
+            );
+    }
+    else // freqs contains frequencies with non-uniform spacing; we start at lowest given frequency
+    {
+        *htilde = 
+            XLALCreateCOMPLEX16FrequencySeries(
+                "htilde: FD waveform", 
+                (LIGOTimeGPS){ 0, 0 },
+                f_min, 
+                deltaF, 
+                &lalStrainUnit, 
+                num_strain_axis_samples
+            );
+    }
+    
     for (int32_t index = 0; index < num_strain_axis_samples; index++) 
     {
         (*htilde)->data->data[index] = (complex double)strain_fd[index];
     }
     
-    print_timer("6", &timer);
-
     LALFree(amplitude_coefficients);
     LALFree(phase_coefficients);
     LALFree(pn);
@@ -570,7 +580,7 @@ int cuPhenomDGenerateFD(
     return status;
 }
 
-int ZombieIMRPhenomDGenerateFD(
+int IMRPhenomDGenerateFD(
      COMPLEX16FrequencySeries **htilde, /**< [out] FD waveform */
      const double phi0,                  /**< Orbital phase at fRef (rad) */
      const double fRef_in,               /**< reference frequency (Hz) */
@@ -663,7 +673,7 @@ int ZombieIMRPhenomDGenerateFD(
     return XLAL_SUCCESS;
 }
 
-int ZombieSimInspiralChooseFDWaveform(
+int cuInspiralChooseFDWaveform(
      COMPLEX16FrequencySeries **hptilde,     /**< FD plus polarization */
      COMPLEX16FrequencySeries **hctilde,     /**< FD cross polarization */
      const double m1,                         /**< mass of companion 1 (kg) */
@@ -706,7 +716,7 @@ int ZombieSimInspiralChooseFDWaveform(
      {
          case IMRPhenomD:
              // Call the waveform driver routine:
-             ret = ZombieIMRPhenomDGenerateFD(hptilde, phiRef, f_ref, deltaF, m1, m2,
+             ret = IMRPhenomDGenerateFD(hptilde, phiRef, f_ref, deltaF, m1, m2,
                    S1z, S2z, f_min, f_max, distance, LALparams, 4);
              if (ret == XLAL_FAILURE) XLAL_ERROR(XLAL_EFUNC);
              /* Produce both polarizations */
@@ -771,7 +781,7 @@ int ZombieSimInspiralChooseFDWaveform(
      return ret;
 }
 
-int InspiralFD(
+int cuInspiralFD(
     COMPLEX16FrequencySeries **hptilde,     /**< FD plus polarization */
     COMPLEX16FrequencySeries **hctilde,     /**< FD cross polarization */
     companion_s companion_1,
@@ -870,9 +880,10 @@ int InspiralFD(
      deltaF = 1.0 / (chirplen * deltaT);
     else if (deltaF > 1.0 / (chirplen * deltaT))
      XLAL_PRINT_WARNING("Specified frequency interval of %g Hz is too large for a chirp of duration %g s", deltaF, chirplen * deltaT);
-
+    
     /* generate the waveform in the frequency domain starting at fstart */
-    retval = ZombieSimInspiralChooseFDWaveform(hptilde, hctilde, m1, m2, S1x, S1y, S1z, S2x, S2y, S2z, distance, inclination, phiRef, longAscNodes, eccentricity, meanPerAno, deltaF, fstart, f_max, f_ref, LALparams, approximant);
+    retval = cuInspiralChooseFDWaveform(hptilde, hctilde, m1, m2, S1x, S1y, S1z, S2x, S2y, S2z, distance, inclination, phiRef, longAscNodes, eccentricity, meanPerAno, deltaF, fstart, f_max, f_ref, LALparams, approximant);
+    
     if (retval < 0)
      XLAL_ERROR(XLAL_EFUNC);
 
@@ -911,7 +922,7 @@ int InspiralFD(
     return 0;
 }
 
-int InspiralTDFromFD(
+int cuInspiralTDFromFD(
      REAL8TimeSeries       **hplus,                    /**< +-polarization waveform */
      REAL8TimeSeries       **hcross,                   /**< x-polarization waveform */
      system_properties_s     system_properties,
@@ -932,8 +943,13 @@ int InspiralTDFromFD(
     // Generate the conditioned waveform in the frequency domain note: redshift 
     // factor has already been applied above set deltaF = 0 to get a small
     // enough resolution:
+    
+   // printf("Cuda 3 | fstart: %f, f_ref %f, deltaT %f | \n", 
+   //  temporal_properties.starting_frequency.hertz, 
+   //  temporal_properties.reference_frequency.hertz, 
+   //  temporal_properties.sampling_interval.seconds);
     int32_t return_value = 
-        InspiralFD(
+        cuInspiralFD(
             &hptilde, 
             &hctilde, 
             system_properties.companion[0],
@@ -951,16 +967,42 @@ int InspiralTDFromFD(
             LALparams,
             approximant
         );
+    
+    // we want to make sure that this waveform will give something
+    // sensible if it is later transformed into the time domain:
+    // to avoid the end of the waveform wrapping around to the beginning,
+    // we shift waveform backwards in time and compensate for this
+    // shift by adjusting the epoch -- note that XLALSimInspiralFD
+    // guarantees that there is extra padding to do this 
+     double tshift = round(temporal_properties.extra_time.seconds / temporal_properties.sampling_interval.seconds) * temporal_properties.sampling_interval.seconds; // integer number of samples 
+     for (k = 0; k < hptilde->data->length; ++k) {
+         double complex phasefac = cexp(2.0 * M_PI * I * k * hptilde->deltaF * tshift);
+         hptilde->data->data[k] *= phasefac;
+         hctilde->data->data[k] *= phasefac;
+     }
 
     //XLALGPSAdd(&hptilde->epoch, tshift);
     //XLALGPSAdd(&hctilde->epoch, tshift);
-
+    
+    
     // Rransform the waveform into the time domain:
     size_t chirplen = 2 * (hptilde->data->length - 1);
     *hplus = XLALCreateREAL8TimeSeries("H_PLUS", &hptilde->epoch, 0.0, temporal_properties.sampling_interval.seconds, &lalStrainUnit, chirplen);
     *hcross = XLALCreateREAL8TimeSeries("H_CROSS", &hctilde->epoch, 0.0, temporal_properties.sampling_interval.seconds, &lalStrainUnit, chirplen);
     
+    
     size_t num_waveform_samples = 2 * (hptilde->data->length - 1);
+
+    performIRFFT64(
+        hptilde->data->data,
+        hctilde->data->data,
+        (*hplus)->data->data,
+        (*hcross)->data->data,
+        temporal_properties.sampling_interval,
+        (int32_t)num_waveform_samples
+    );
+        
+    /*
         performIRFFT(
             hptilde->data->data,
             hctilde->data->data,
@@ -970,9 +1012,39 @@ int InspiralTDFromFD(
             initFrequencyHertz(hptilde->deltaF),
             (int32_t)num_waveform_samples
         );
-
+    */
+    
+    
+     /*
+     XLALGPSAdd(&hptilde->epoch, tshift);
+     XLALGPSAdd(&hctilde->epoch, tshift);
+  
+     // transform the waveform into the time domain 
+     size_t chirplen = 2 * (hptilde->data->length - 1);
+     *hplus = XLALCreateREAL8TimeSeries("H_PLUS", &hptilde->epoch, 0.0, temporal_properties.sampling_interval.seconds, &lalStrainUnit, chirplen);
+     *hcross = XLALCreateREAL8TimeSeries("H_CROSS", &hctilde->epoch, 0.0, temporal_properties.sampling_interval.seconds, &lalStrainUnit, chirplen);
+     void* plan = XLALCreateReverseREAL8FFTPlan(chirplen, 0);
+     if (!(*hplus) || !(*hcross) || !plan) {
+         XLALDestroyCOMPLEX16FrequencySeries(hptilde);
+         XLALDestroyCOMPLEX16FrequencySeries(hctilde);
+         XLALDestroyREAL8TimeSeries(*hcross);
+         XLALDestroyREAL8TimeSeries(*hplus);
+         XLALDestroyREAL8FFTPlan(plan);
+         XLAL_ERROR(XLAL_EFUNC);
+     }
+     XLALREAL8FreqTimeFFT(*hplus, hptilde, plan);
+     XLALREAL8FreqTimeFFT(*hcross, hctilde, plan);
+    */
+    
     /* compute how long a chirp we should have */
     /* revised estimate of chirp length from new start frequency */
+    
+    temporal_properties.chirp_time_upper_bound =  
+        InspiralChirpTimeBound(
+            temporal_properties.starting_frequency, 
+            system_properties
+        );   
+    
     temporal_properties.starting_frequency = 
         InspiralChirpStartFrequencyBound(
             scaleTime(
@@ -997,7 +1069,7 @@ int InspiralTDFromFD(
             / temporal_properties.sampling_interval.seconds
         );
     
-    double tshift = 
+    tshift = 
           round(temporal_properties.extra_time.seconds / temporal_properties.sampling_interval.seconds) 
         * temporal_properties.sampling_interval.seconds; // Integer number of samples
     
@@ -1161,7 +1233,7 @@ int32_t generateInspiral(
     }
     
     // Generate the waveform in the time domain starting at starting frequency:
-    int32_t return_value = InspiralTDFromFD(
+    int32_t return_value = cuInspiralTDFromFD(
         hplus, 
         hcross, 
         system_properties,
@@ -1169,6 +1241,9 @@ int32_t generateInspiral(
         LALparams, 
         approximant
     );
+    
+    //printArrayE("First 10 2 Cuda", (*hplus)->data->data, 100);
+
     
     // Set inclination to original:
     system_properties.inclination = original_inclination;
@@ -1210,6 +1285,9 @@ int32_t generateInspiral(
     // Condition the time domain waveform by tapering in the extra time
     // at the beginning and high-pass filtering above original 
     // starting_frequency:
+    
+    //Leave out for now
+    /*
     XLALSimInspiralTDConditionStage1(
         *hplus, 
         *hcross, 
@@ -1217,7 +1295,8 @@ int32_t generateInspiral(
         + temporal_properties.extra_time.seconds, 
         original_starting_frequency.hertz
     );
-    
+    */
+        
     return return_value;
 }
 
@@ -1302,6 +1381,7 @@ void generatePhenomCUDA(
         extraParams,
         approximant
     );
+    
     
     const int32_t waveform_num_samples = (int32_t)hplus->data->length;
     
