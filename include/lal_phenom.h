@@ -16,48 +16,47 @@ void generatePhenomLAL(
     ) {
 	
 	const int32_t num_samples = 
-		(int32_t)floor(sample_rate.hertz*duration.seconds);
+		(int32_t)floorf(sample_rate.hertz*duration.seconds);
 	
 	REAL8TimeSeries *hplus  = NULL;
 	REAL8TimeSeries *hcross = NULL;
 	
-	REAL8 S1x          = 0.0;
-	REAL8 S1y          = 0.0;
-	REAL8 S1z          = 0.0;
-	REAL8 S2x          = 0.0;
-	REAL8 S2y          = 0.0;
-	REAL8 S2z          = 0.0;
+	double S1x          = 0.0;
+	double S1y          = 0.0;
+	double S1z          = 0.0;
+	double S2x          = 0.0;
+	double S2y          = 0.0;
+	double S2z          = 0.0;
 	
-	REAL8 phiRef       = 0.0;
-	REAL8 longAscNodes = 0.0;
-	REAL8 eccentricity = 0.0;
-	REAL8 meanPerAno   = 0.0;
-	REAL8 deltaT       = 1.0/sample_rate.hertz;
-	REAL8 f_min        = 
+	double phiRef       = 0.0;
+	double longAscNodes = 0.0;
+	double eccentricity = 0.0;
+	double meanPerAno   = 0.0;
+	double deltaT       = 1.0/sample_rate.hertz;
+	double f_min        = 
 		calcMinimumFrequency(
 			mass_1, 
 			mass_2, 
 			duration
 		).hertz;
 	
-	REAL8        f_ref       = 0.0;
+	double        f_ref       = 0.0;
 	LALDict     *extraParams = NULL;
-	
+    
 	//Converting to SI:
-		
 	XLALSimInspiralTD(
 		&hplus,
 		&hcross,
-		mass_1.kilograms,
-		mass_2.kilograms,
+		(double)mass_1.kilograms,
+		(double)mass_2.kilograms,
 		S1x,
 		S1y,
 		S1z,
 		S2x,
 		S2y,
 		S2z,
-		distance.meters,
-		inclination.radians,
+		(double)distance.meters,
+		(double)inclination.radians,
 		phiRef,
 		longAscNodes,
 		eccentricity,
@@ -68,7 +67,7 @@ void generatePhenomLAL(
 		extraParams,
 		approximant
 	);
-	
+    
 	const int32_t waveform_num_samples = (int32_t)hplus->data->length;
 	
 	if (waveform_num_samples < num_samples) 

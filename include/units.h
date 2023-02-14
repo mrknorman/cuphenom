@@ -2,63 +2,65 @@
 #define CUDA_UNITS_H
 
 #include <stdarg.h>
+#include <gsl/gsl_const_mksa.h>
 
 // Hardwired constants:
-#define AU_METERS 149597870700.0 
-#define PC_METERS AU_METERS * (648000.0 / M_PI) //-- A parsec in m
-#define MPC_METERS PC_METERS * 10E6
-#define SIDEREAL_YEAR_SECONDS 365.256363004*24*3600
+#define AU_METERS 149597870700.0f
+#define PC_METERS AU_METERS * (648000.0f / (float)M_PI) //-- A parsec in m
+#define MPC_METERS PC_METERS * 10E6f
+#define SIDEREAL_YEAR_SECONDS 365.256363004f*24.0f*3600.0f
 
-#define G_SI 6.67408E-11  //-- the gravitational constant in m^3/(kilogram*s^2)
-#define MASS_SUN_KILOGRAMS   (4.0*M_PI*M_PI*AU_METERS*AU_METERS*AU_METERS) \
+#define G_SI 6.67408E-11f  //-- the gravitational constant in m^3/(kilogram*s^2)
+#define MASS_SUN_KILOGRAMS   (4.0f*(float)(M_PI*M_PI)*AU_METERS*AU_METERS*AU_METERS) \
 						   / (G_SI*SIDEREAL_YEAR_SECONDS*SIDEREAL_YEAR_SECONDS)
 
-#define C_SI 299792458.0 //-- the speed of light in m/s
+#define C_SI 299792458.0f //-- the speed of light in m/s
+
+#define EULER_MASCHERONI 0.577215664901532860606512090082402431f
 #define NUM_POLARIZATION_STATES 2
 
 typedef double float64_t;
 
 typedef struct {
-	float64_t x; 
-	float64_t y;
+	float x; 
+	float y;
 } float64_2_t;
 
 // Mass functions:
 
 typedef struct {
-	float64_t msun;
-	float64_t kilograms;
-	float64_t seconds;
-	float64_t meters;
+	float msun;
+	float kilograms;
+	float seconds;
+	float meters;
 } massUnit_t;
 
-inline float64_t kilogramsToSeconds(const float64_t mass_kilogram)
+inline float kilogramsToSeconds(const float mass_kilogram)
 {
 	return mass_kilogram*G_SI / (C_SI*C_SI*C_SI);
 }
 
-inline float64_t kilogramsToMeters(const float64_t mass_kilogram)
+inline float kilogramsToMeters(const float mass_kilogram)
 {
 	return mass_kilogram*G_SI / (C_SI*C_SI);
 }
 
-inline float64_t kilogramsToMsun(const float64_t mass_kilogram)
+inline float kilogramsToMsun(const float mass_kilogram)
 {
-	return mass_kilogram/MASS_SUN_KILOGRAMS;
+	return (float)((double)mass_kilogram/(double)MASS_SUN_KILOGRAMS);
 }
 
-
-inline float64_t msunToKilograms(const float64_t mass_msun)
+inline float msunToKilograms(const float mass_msun)
 {
 	return mass_msun*MASS_SUN_KILOGRAMS;
 }
 
 massUnit_t initMassSolarMass(
-	const float64_t mass_msun
+	const float mass_msun
 ) {
 	massUnit_t mass = {
 		.msun      = mass_msun,
-		.kilograms = msunToKilograms   (mass.msun),
+		.kilograms = msunToKilograms   (mass_msun),
 		.seconds   = kilogramsToSeconds(msunToKilograms(mass_msun)),
 		.meters    = kilogramsToMeters (msunToKilograms(mass_msun))
 	};
@@ -67,7 +69,7 @@ massUnit_t initMassSolarMass(
 }
 
 massUnit_t initMassKilograms(
-	const float64_t mass_kilograms
+	const float mass_kilograms
 ) {
 	massUnit_t mass = {
 		.msun      = kilogramsToMsun(mass_kilograms),
@@ -81,7 +83,7 @@ massUnit_t initMassKilograms(
 
 massUnit_t scaleMass(
 	const massUnit_t    mass, 
-	const float64_t scalar
+	const float scalar
 ) {
 	massUnit_t scaled = {
 		.msun      = mass.msun      * scalar,
@@ -151,33 +153,33 @@ massUnit_t divideMasses(
 
 // Distance functions:
 typedef struct {
-	float64_t Mpc;
-	float64_t meters;
+	float Mpc;
+	float meters;
 } lengthUnit_t;
 
-inline float64_t MpcToMeters(const float64_t length_mpc)
+inline float MpcToMeters(const float length_mpc)
 {
 	return length_mpc*MPC_METERS;
 }
 
-inline float64_t MeterToMPc(const float64_t length_meters)
+inline float MeterToMPc(const float length_meters)
 {
 	return length_meters/MPC_METERS;
 }
 
 lengthUnit_t initLengthMpc(
-	const float64_t length_mpc
+	const float length_mpc
 ) {
 	lengthUnit_t length = {
 		 .Mpc    = length_mpc,
-		 .meters = MpcToMeters(length.Mpc)
+		 .meters = MpcToMeters(length_mpc)
 	 };
 	
 	return length;
 }
 
 lengthUnit_t initLengthMeters(
-	const float64_t length_meters
+	const float length_meters
 ) {
 	lengthUnit_t length = {
 		 .Mpc    = MeterToMPc(length_meters),
@@ -189,7 +191,7 @@ lengthUnit_t initLengthMeters(
 
 lengthUnit_t scaleLength(
 	const lengthUnit_t  length, 
-	const float64_t scalar
+	const float scalar
 ) {
 	lengthUnit_t scaled = {
 		.Mpc    = length.Mpc    * scalar,
@@ -202,11 +204,11 @@ lengthUnit_t scaleLength(
 // Time Functions:
 
 typedef struct {
-	float64_t seconds;
+	float seconds;
 } timeUnit_t;
 
 timeUnit_t initTimeSeconds(
-	float64_t time_seconds
+	float time_seconds
 	) {
 	
 	timeUnit_t time = {
@@ -260,7 +262,7 @@ timeUnit_t multiplyTimes(
 
 timeUnit_t scaleTime(
 	const timeUnit_t time_1,
-	const float64_t  scale
+	const float  scale
 ) {
 	timeUnit_t scaled = {
 		.seconds = time_1.seconds * scale
@@ -271,11 +273,11 @@ timeUnit_t scaleTime(
 
 // Frequency Functions:
 typedef struct {
-	float64_t hertz;
+	float hertz;
 } frequencyUnit_t;
 
 frequencyUnit_t initFrequencyHertz(
-	float64_t frequency_hertz
+	float frequency_hertz
 	) {
 	
 	frequencyUnit_t frequency = {
@@ -287,11 +289,11 @@ frequencyUnit_t initFrequencyHertz(
 
 // Angle Functions:
 typedef struct {
-	float64_t radians;
+	float radians;
 } angularUnit_t;
 
 angularUnit_t initAngleRadians(
-	float64_t angle_radians
+	float angle_radians
 	) {
 	
 	angularUnit_t angle = {

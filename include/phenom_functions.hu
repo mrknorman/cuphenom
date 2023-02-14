@@ -104,11 +104,10 @@ extern "C" void performTimeShiftHost(
 }
 
 __global__ void initFrequencyArray(
-              float          *frequency_axis_hertz, 
-        const int32_t         start_index, 
-        const int32_t         end_index, 
-        const frequencyUnit_t frequency_interval,
-        const int32_t         num_frequency_axis_samples
+              frequency_array_s frequency_array, 
+        const int32_t           start_index, 
+        const int32_t           end_index, 
+        const frequencyUnit_t   frequency_interval
     ) {
     
     /**
@@ -122,21 +121,18 @@ __global__ void initFrequencyArray(
     const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
     
     // If not outside array bounds, add value toa array element:
-    if (sample_index < num_frequency_axis_samples) 
+    if (sample_index < frequency_array.num_samples) 
 	{    
-        frequency_axis_hertz[sample_index] = 
+        frequency_array.values[sample_index].hertz = 
             (sample_index+start_index)*frequency_interval.hertz;
     }    
 }
 
-extern "C" int32_t generatePhenomD(
-    const frequencyUnit_t  starting_frequency,
-    const frequencyUnit_t  ending_frequency,
-    const frequencyUnit_t  frequency_interval,
-    const int32_t          num_strain_axis_samples,
-          int32_t         *ret_num_frequency_axis_samples,
-          float          **ret_frequency_axis_hertz,
-          cuFloatComplex **ret_strain_fd_g
+extern "C" complex_waveform_axes_s generatePhenomD(
+    const frequencyUnit_t          starting_frequency,
+    const frequencyUnit_t          ending_frequency,
+    const frequencyUnit_t          frequency_interval,
+    const int32_t                  num_strain_axis_samples
     ) {
 
     // Initilise frequency array using the upper and lower bounds:
@@ -177,44 +173,47 @@ extern "C" int32_t generatePhenomD(
     cuFloatComplex *strain_fd_g            = NULL;
              float *frequency_axis_hertz_g = NULL;  
     
+    complex_strain_array_s complex_strain_array;
     cudaCallocateDeviceMemory(
         num_strain_axis_samples,
-        sizeof(cuFloatComplex),
-        (void**)&strain_fd_g
+        sizeof(complex_strain_element_t),
+        (void**)&(complex_strain_array.values)
     );
+    complex_strain_array.num_samples = num_strain_axis_samples;
+    
+    frequency_array_s frequency_array;
     cudaAllocateDeviceMemory(
         num_frequency_axis_samples,
-        sizeof(float),
-        (void**)&frequency_axis_hertz_g
+        sizeof(frequencyUnit_t),
+        (void**)&(frequency_array.values)
     );
+    frequency_array.num_samples = num_frequency_axis_samples;
     
     // Init Frequency Axis
     const int32_t grid_size = 
         ((num_frequency_axis_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
         
     initFrequencyArray<<<grid_size, BLOCK_SIZE>>>(
-        frequency_axis_hertz_g, 
+        frequency_array, 
         start_index, 
         end_index, 
-        frequency_interval,
-        num_frequency_axis_samples
+        frequency_interval
     );
     
-    *ret_num_frequency_axis_samples = num_frequency_axis_samples;
-    *ret_frequency_axis_hertz       = frequency_axis_hertz_g;
-    *ret_strain_fd_g                = strain_fd_g;
-
-    return 1;
+    complex_waveform_axes_s complex_waveform_axes = 
+    {
+        .frequency = frequency_array,
+        .strain    = complex_strain_array
+    };
+    
+    return complex_waveform_axes;
 }
 
 __device__ __forceinline__ useful_powers_s _initUsefulPowers(
     const float one
     ) {
         
-    // Consider changing pow(x,1/6.0) to cbrt(x) and sqrt(x) - might be faster
-    const float sixth = sqrt(one) / cbrt(one);
-    
-    pow(one, 1.0f/6.0f);
+    const float sixth = sqrtf(one) / cbrtf(one);    
     const float m_sixth = 1.0f/sixth;
     
     useful_powers_s powers;
@@ -245,8 +244,8 @@ __device__ __forceinline__ useful_powers_s _initUsefulPowers(
 // See 1508.07253 and Equation 29, 30 and Appendix B arXiv:1508.07253 for 
 // details:
 __device__ __forceinline__ float _calculateInspiralAmplitudeAnsatz(
-    const useful_powers_s  mass_frequency, 
-    const AmpInsPrefactors prefactors
+    const useful_powers_s                 mass_frequency, 
+    const amplitude_inspiral_prefactors_s prefactors
     ) {
     
     return 1.0f 
@@ -266,31 +265,32 @@ __device__ __forceinline__ float _calculateInspiralAmplitudeAnsatz(
 //Ansatz for the merger-ringdown amplitude. Equation 19 arXiv:1508.07253:
 __device__ __forceinline__ float _calculateMergerRingdownAmplitudeAnsatz(
     const useful_powers_s                 mass_frequency, 
-    const IMRPhenomDAmplitudeCoefficients coefficients
+    const amplitude_coefficients_s coefficients
     ) {
     
-    const float fRD = coefficients.fRD;
-    const float fDM = coefficients.fDM;
+    const float ringdown_frequency = coefficients.ringdown_frequency;
+    const float damping_time = coefficients.damping_time;
     
-    const double *gamma = coefficients.merger_ringdown;
+    const float *gamma = coefficients.merger_ringdown;
     
-    const float fDMgamma2 = fDM*gamma[2];
-    const float fminfRD   = mass_frequency.one - fRD;
+    const float damping_time_gamma3 = damping_time*gamma[2];
+    const float fminfRD   = mass_frequency.one - ringdown_frequency;
     
-    return expf( -(fminfRD)*gamma[1] / (fDMgamma2) )
-        * (fDMgamma2*gamma[0]) / (_square(fminfRD) + _square(fDMgamma2));
+    return expf( -(fminfRD)*gamma[1] / (damping_time_gamma3) )
+        * (damping_time_gamma3*gamma[0]) / 
+            (_square(fminfRD) + _square(damping_time_gamma3));
     }
  
 // Ansatz for the intermediate amplitude. Equation 21 arXiv:1508.07253:
 __device__ __forceinline__  double _calculateIntermediateAmplitudeAnsatz(
     const useful_powers_s                 mass_frequency, 
-    const IMRPhenomDAmplitudeCoefficients coefficients
+    const amplitude_coefficients_s coefficients
     ) {
     
     const float Mf   = mass_frequency.one;
     const float Mf_2 = _square(Mf);
     
-    const double *delta = coefficients.intermediate;
+    const float *delta = coefficients.intermediate;
        
     return 
         + delta[0] 
@@ -301,9 +301,9 @@ __device__ __forceinline__  double _calculateIntermediateAmplitudeAnsatz(
 // This function computes the IMR amplitude given phenom coefficients. Defined 
 // in VIII. Full IMR Waveforms arXiv:1508.07253:
 __device__ float _calculateAmplitude(
-        const useful_powers_s                  mass_frequency,
-        const IMRPhenomDAmplitudeCoefficients  coefficients,
-        const AmpInsPrefactors                 prefactors
+        const useful_powers_s                 mass_frequency,
+        const amplitude_coefficients_s coefficients,
+        const amplitude_inspiral_prefactors_s prefactors
     ) {
     // Defined in VIII. Full IMR Waveforms arXiv:1508.07253
     // The inspiral, intermediate and merger-ringdown amplitude parts
@@ -316,7 +316,7 @@ __device__ float _calculateAmplitude(
     float amplitude_ansatz = 0.0f;
     
     // Inspiral range:
-    if (mass_frequency.one < AMP_fJoin_INS) 
+    if (mass_frequency.one < AMPLITUDE_INTERMEDIATE_START_FREQUENCY) 
     {
         amplitude_ansatz = 
             _calculateInspiralAmplitudeAnsatz(
@@ -324,7 +324,7 @@ __device__ float _calculateAmplitude(
             );
     }
     // Merger-Ringdown range:
-    else if (mass_frequency.one >= coefficients.fmaxCalc) 
+    else if (mass_frequency.one >= coefficients.inspiral_merger_peak_frequency) 
     {
         amplitude_ansatz = 
             _calculateMergerRingdownAmplitudeAnsatz(
@@ -348,14 +348,14 @@ __device__ float _calculateAmplitude(
 // this file. Defined by Equation 27 and 28 arXiv:1508.07253
 __device__ __forceinline__ float _calculateInspiralPhaseAnsatz(
     const useful_powers_s              mass_frequency, 
-    const PhiInsPrefactors             prefactors, 
-    const IMRPhenomDPhaseCoefficients  coefficients
+    const phase_inspiral_prefactors_s             prefactors, 
+    const phase_coefficients_s  coefficients
     ) {
     // Assemble PN phasing series:
     const float v    = mass_frequency.third * CUBE_ROOT_PI;
     const float logv = logf(v);
     
-   const float phase_ansatz =  
+    const float phase_ansatz =  
          prefactors.initial_phasing
        + prefactors.two_thirds        * mass_frequency.two_thirds
        + prefactors.third             * mass_frequency.third
@@ -382,51 +382,57 @@ __device__ __forceinline__ float _calculateInspiralPhaseAnsatz(
 //Rholm was added when IMRPhenomHM (high mode) was added.
 //Rholm = fRD22/fRDlm. For PhenomD (only (l,m)=(2,2)) this is just equal
 //to 1. and PhenomD is recovered.
-//Taulm = fDMlm/fDM22. Ratio of ringdown damping times.
+//Taulm = damping_timelm/damping_time22. Ratio of ringdown damping times.
 //Again, when Taulm = 1.0 then PhenomD is recovered.
 __device__ __forceinline__ float _calculateMergerRingdownPhaseAnsatz(
-    const useful_powers_s             mass_frequency, 
-    const IMRPhenomDPhaseCoefficients coefficients, 
-    const float                       Rholm, 
-    const float                       Taulm
+    const useful_powers_s      mass_frequency, 
+    const phase_coefficients_s coefficients, 
+    const float                Rholm, 
+    const float                Taulm
     ) {
     
     const float sqrootf  = sqrt(mass_frequency.one);
     const float fpow1_5  = mass_frequency.one * sqrootf;
     const float fpow0_75 = sqrt(fpow1_5);
     
+    const float *alpha = coefficients.merger_ringdown;
+    
     return 
-        - (coefficients.alpha2/mass_frequency.one)
-        + (4.0f/3.0f) * (coefficients.alpha3 * fpow0_75)
-        + coefficients.alpha1 * mass_frequency.one
-        + coefficients.alpha4 * 
+        - (alpha[1]/mass_frequency.one)
+        + (4.0f/3.0f) * (alpha[2] * fpow0_75)
+        + alpha[0] * mass_frequency.one
+        + alpha[3] * 
             Rholm 
             * atanf(
-                  (mass_frequency.one - coefficients.alpha5 * coefficients.fRD) 
-                / (Rholm * coefficients.fDM * Taulm)
+                  (mass_frequency.one - alpha[4]
+                  * coefficients.ringdown_frequency) 
+                / (Rholm * coefficients.damping_time * Taulm)
             );
 }
 
 
 // Ansatz for the intermediate phase defined by Equation 16 arXiv:1508.07253
 __device__ __forceinline__ float _calculateIntermediatePhaseAnsatz(
-    const useful_powers_s             mass_frequency, 
-    const IMRPhenomDPhaseCoefficients coefficients
+    const useful_powers_s      mass_frequency, 
+    const phase_coefficients_s coefficients
     ) {
     // 1./eta in paper omitted and put in when need in the functions:
     // ComputeIMRPhenDPhaseConnectionCoefficients
     // IMRPhenDPhase
+    
+    const float *beta = coefficients.intermediate;
+
     return 
-          coefficients.beta1*mass_frequency.one 
-        - coefficients.beta3/(3.0f*_cube(mass_frequency.one)) 
-        + coefficients.beta2*logf(mass_frequency.one);
+          beta[0]*mass_frequency.one 
+        - beta[2]/(3.0f*_cube(mass_frequency.one)) 
+        + beta[1]*logf(mass_frequency.one);
 }
 
 
 __device__ float _calculatePhase(
     const useful_powers_s             mass_frequency, 
-    const IMRPhenomDPhaseCoefficients coefficients, 
-    const PhiInsPrefactors            prefactors, 
+    const phase_coefficients_s        coefficients, 
+    const phase_inspiral_prefactors_s prefactors, 
     const float                       Rholm, 
     const float                       Taulm
     ) {
@@ -437,7 +443,7 @@ __device__ float _calculatePhase(
     // Split the calculation to just 1 of 3 possible mutually exclusive ranges
     float phase = 0.0f;
     // Inspiral range
-    if (mass_frequency.one < coefficients.fInsJoin)        
+    if (mass_frequency.one < coefficients.intermediate_start_frequency)        
     {
         phase = 
             _calculateInspiralPhaseAnsatz(
@@ -447,7 +453,7 @@ __device__ float _calculatePhase(
             );
     }
     // Merger-Ringdown range:
-    else if (mass_frequency.one >= coefficients.fMRDJoin) 
+    else if (mass_frequency.one >= coefficients.merger_ringdown_start_frequency) 
     {
         phase = 
             coefficients.etaInv*
@@ -479,10 +485,10 @@ __device__ float _calculatePhase(
 __global__ void sumFrequenciesPhenomTidal(
           cuFloatComplex                  *strain_fd_g,
     const float                            total_mass_seconds,
-    const IMRPhenomDAmplitudeCoefficients  amplitude_coefficients,
-    const AmpInsPrefactors                 amplitude_prefactors,
-    const IMRPhenomDPhaseCoefficients      phase_coefficients, 
-    const PhiInsPrefactors                 phase_prefactors, 
+    const amplitude_coefficients_s         amplitude_coefficients,
+    const amplitude_inspiral_prefactors_s  amplitude_prefactors,
+    const phase_coefficients_s             phase_coefficients, 
+    const phase_inspiral_prefactors_s                 phase_prefactors, 
     const float                           *tidal_amplitude_array,
     const int32_t                          offset,
     const float                           *frequency_axis_hertz,
@@ -559,19 +565,19 @@ __global__ void sumFrequenciesPhenomTidal(
 }
 
 __global__ void sumFrequenciesPhenom(
-          cuFloatComplex                  *strain_fd_g,
-    const float                            total_mass_seconds,
-    const IMRPhenomDAmplitudeCoefficients  amplitude_coefficients,
-    const AmpInsPrefactors                 amplitude_prefactors,
-    const IMRPhenomDPhaseCoefficients      phase_coefficients, 
-    const PhiInsPrefactors                 phase_prefactors, 
-    const int32_t                          offset,
-    const float                           *frequency_axis_hertz,
-    const int32_t                          num_frequency_axis_samples,
-    const float                            phase_shift,
-    const float                            amp0,
-    const float                            reference_mass_frequency,
-    const float                            phi_precalc
+          complex_waveform_axes_s         waveform_axes,
+    const float                           plus_factor,
+    const float                           cross_factor,
+    const float                           total_mass_seconds,
+    const amplitude_coefficients_s        amplitude_coefficients,
+    const amplitude_inspiral_prefactors_s amplitude_prefactors,
+    const phase_coefficients_s            phase_coefficients, 
+    const phase_inspiral_prefactors_s                phase_prefactors, 
+    const int32_t                         offset,
+    const float                           phase_shift,
+    const float                           amp0,
+    const float                           reference_mass_frequency,
+    const float                           phi_precalc
     ) {
     
     //
@@ -587,7 +593,7 @@ __global__ void sumFrequenciesPhenom(
     
     
     // If not outside array bounds, add value toa array element:
-    if (sample_index < num_frequency_axis_samples) 
+    if (sample_index < waveform_axes.frequency.num_samples) 
 	{    
         // Shift index for frequency series if needed:
         const int32_t offset_index = sample_index + offset; 
@@ -595,7 +601,8 @@ __global__ void sumFrequenciesPhenom(
         // Calculate usefull powers of mass_frequency value:
         const useful_powers_s mass_frequency = 
             _initUsefulPowers(
-                total_mass_seconds*frequency_axis_hertz[sample_index]
+                total_mass_seconds*
+                    waveform_axes.frequency.values[sample_index].hertz
             );    
 
         // Calculate amplitude value at current sample index:
@@ -623,7 +630,7 @@ __global__ void sumFrequenciesPhenom(
             (cuFloatComplex) 
             {
                 0.0f,
-                -phase
+                -1*phase
             };
         
         const cuFloatComplex amplitude_c = 
@@ -634,40 +641,55 @@ __global__ void sumFrequenciesPhenom(
             };
         
         // Calculate strain at current sample_index:
-        strain_fd_g[offset_index] = cuCmulf(amplitude_c,cudaCExpf(phase_c));
+        waveform_axes.strain.values[offset_index].plus = 
+            cuCmulf(amplitude_c,cudaCExpf(phase_c));
+            
+        waveform_axes.strain.values[offset_index].cross = 
+            cuCmulf(
+                waveform_axes.strain.values[offset_index].plus, 
+                (cuFloatComplex) {0.0f, -1*cross_factor}
+            );
+            
+        waveform_axes.strain.values[offset_index].plus =
+            cuCmulf(
+                waveform_axes.strain.values[offset_index].plus,
+                (cuFloatComplex) {plus_factor, 0.0}
+            );
     }    
 }
 
 
 extern "C" int32_t sumPhenomDFrequencies(
-          cuFloatComplex                  *strain_fd_g,
-    const float                            total_mass_seconds,
-    const IMRPhenomDAmplitudeCoefficients  amplitude_coefficients,
-    const AmpInsPrefactors                 amplitude_prefactors,
-    const IMRPhenomDPhaseCoefficients      phase_coefficients, 
-    const PhiInsPrefactors                 phase_prefactors, 
-    const int32_t                          offset,
-    const float                           *frequency_axis_hertz,
-    const int32_t                          num_frequency_axis_samples,
-    const float                            phase_shift,
-    const float                            amp0,
-    const float                            reference_mass_frequency,
-    const float                            phi_precalc
+          complex_waveform_axes_s         waveform_axes,
+    const float                           inclination,
+    const float                           total_mass_seconds,
+    const amplitude_coefficients_s        amplitude_coefficients,
+    const amplitude_inspiral_prefactors_s amplitude_prefactors,
+    const phase_coefficients_s            phase_coefficients, 
+    const phase_inspiral_prefactors_s     phase_prefactors, 
+    const int32_t                         offset,
+    const float                           phase_shift,
+    const float                           amp0,
+    const float                           reference_mass_frequency,
+    const float                           phi_precalc
     ) {
     
     const int32_t grid_size = 
-        ((num_frequency_axis_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        ((waveform_axes.frequency.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        
+    const float cross_factor = cosf(inclination);
+    const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
     
     sumFrequenciesPhenom<<<grid_size, BLOCK_SIZE>>>(
-        strain_fd_g,
+        waveform_axes,
+        plus_factor,
+        cross_factor,
         total_mass_seconds,
         amplitude_coefficients,
         amplitude_prefactors,
         phase_coefficients, 
         phase_prefactors, 
         offset,
-        frequency_axis_hertz,
-        num_frequency_axis_samples,
         phase_shift,
         amp0,
         reference_mass_frequency,

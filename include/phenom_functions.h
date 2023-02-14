@@ -5,87 +5,34 @@
 #include <lal/LALSimInspiral.h>
 #include <cuda_maths.h>
 
-// Vector of dimensionless spins {x,y,z}:
-typedef struct 
-{ 
-    double x;
-    double y;
-    double z;
-} spin_t;
-
-float64_t calculateSpinNorm(
+float calculateSpinNorm(
     const spin_t spin
     ) {
     
     return spin.x*spin.x + spin.y*spin.y + spin.z*spin.z;
 }
 
-typedef struct {
-    massUnit_t mass;               // <-- Mass of companion (massUnit_t).     
-    spin_t spin;               // <-- Vector of dimensionless spins {x,y,z}.
-    double quadrapole_moment;  
-    double lambda;
-} companion_s;
-
-int32_t generatePhenomD(
+complex_waveform_axes_s generatePhenomD(
     const frequencyUnit_t  starting_frequency,
     const frequencyUnit_t  ending_frequency,
     const frequencyUnit_t  frequency_interval,
-    const int32_t          num_strain_axis_samples,
-          int32_t         *ret_num_frequency_axis_samples,
-          float          **ret_frequency_axis_hertz,
-          complex float  **ret_strain_fd_g
+    const int32_t          num_strain_axis_samples
     );
 
 int32_t sumPhenomDFrequencies(
-          cuFloatComplex                  *strain_fd_g,
+          complex_waveform_axes_s          waveform_axes,
+    const float                            inclination,
     const float                            total_mass_seconds,
-    const IMRPhenomDAmplitudeCoefficients  amplitude_coefficients,
-    const AmpInsPrefactors                 amplitude_prefactors,
-    const IMRPhenomDPhaseCoefficients      phase_coefficients, 
-    const PhiInsPrefactors                 phase_prefactors, 
+    const amplitude_coefficients_s         amplitude_coefficients,
+    const amplitude_inspiral_prefactors_s  amplitude_prefactors,
+    const phase_coefficients_s             phase_coefficients, 
+    const phase_inspiral_prefactors_s      phase_prefactors, 
     const int32_t                          offset,
-    const float                           *frequency_axis_hertz,
-    const int32_t                          num_frequency_axis_samples,
     const float                            phase_shift,
     const float                            amp0,
     const float                            reference_mass_frequency,
     const float                            phi_precalc
-);
-
-typedef struct {
-    
-    // ~~~~ Binary Companions ~~~~~ //
-    companion_s companion[2];
-    
-    // ~~~~ Mass properties ~~~~~ //
-    massUnit_t total_mass;
-    massUnit_t reduced_mass;
-    double symmetric_mass_ratio;
-    
-    // ~~~~ Distance properties ~~~~~ //
-    double       redshift;
-    
-    // Distance of source (lengthUnit_t)@
-    lengthUnit_t distance;             
-
-    // ~~~~ Orbital properties ~~~~~ //
-    
-    // Reference orbital phase (angularUnit_t):
-    angularUnit_t reference_orbital_phase; 
-    
-    // Longitude of ascending nodes, degenerate with the polarization angle:
-    double ascending_node_longitude;
-
-    // Inclination of source (angularUnit_t):
-    angularUnit_t inclination;              
-    
-    // Eccentrocity at reference epoch:
-    double eccentricity;             
-
-    // Mean anomaly of periastron:
-    double mean_periastron_anomaly;  
-} system_properties_s;
+    );
 
 static void checkSystemParameters(
     const system_properties_s system_properties
@@ -150,12 +97,12 @@ system_properties_s initBinarySystem(
     companion_s   companion_a,
     companion_s   companion_b,
     lengthUnit_t  distance,
-    double        redshift,
+    float         redshift,
     angularUnit_t inclination,
     angularUnit_t reference_orbital_phase,
-    double        ascending_node_longitude,
-    double        eccentricity, 
-    double        mean_periastron_anomaly
+    float         ascending_node_longitude,
+    float         eccentricity, 
+    float         mean_periastron_anomaly
     ) {
     
     // Initilise structure to hold system_properties information:
@@ -202,8 +149,8 @@ system_properties_s initBinarySystem(
     
     // Calculate the symmetric mass ratio:
     system_properties.symmetric_mass_ratio = 
-        system_properties.reduced_mass.kilograms / 
-        system_properties.total_mass.kilograms;
+        system_properties.reduced_mass.msun / 
+        system_properties.total_mass.msun;
     
     // Assign orbital properties:
     system_properties.inclination              = inclination;
@@ -259,33 +206,33 @@ void performTimeShiftHost(
     const frequencyUnit_t       frequency_interval
 );
 
-inline float64_t TaylorT2Timing_0PNCoeff(
+inline float TaylorT2Timing_0PNCoeff(
     const massUnit_t total_mass,
-    const float64_t  sym_mass_ratio
+    const float      sym_mass_ratio
     ) {
-    return -5.0*total_mass.seconds/(256.0*sym_mass_ratio);
+    return -5.0f*total_mass.seconds/(256.0f*sym_mass_ratio);
 }
 
-inline float64_t TaylorT2Timing_2PNCoeff(
-    const float64_t sym_mass_ratio
+inline float TaylorT2Timing_2PNCoeff(
+    const float sym_mass_ratio
     ) {
-    return 7.43/2.52 + 11./3. * sym_mass_ratio;
+    return 7.43f/2.52f + 11.0f/3.0f * sym_mass_ratio;
 }
 
-inline float64_t TaylorT2Timing_4PNCoeff(
-    const float64_t sym_mass_ratio
+inline float TaylorT2Timing_4PNCoeff(
+    const float sym_mass_ratio
     ) {
     return 30.58673/5.08032 + 54.29/5.04*sym_mass_ratio 
          + 61.7/7.2*sym_mass_ratio*sym_mass_ratio;
 }
 
-inline double TaylorT3Frequency_0PNCoeff(
+inline float TaylorT3Frequency_0PNCoeff(
     const massUnit_t mass
     ) {    
     return 1.0 / (8.0*M_PI*mass.seconds);
 }
 
-float64_t InspiralFinalBlackHoleSpinBound(
+float InspiralFinalBlackHoleSpinBound(
     const system_properties_s system_properties
     ) {
     
@@ -296,13 +243,13 @@ float64_t InspiralFinalBlackHoleSpinBound(
     // extreme mass case).
 
     // Function constants:
-    const float64_t maximum_black_hole_spin = 0.998;
+    const float maximum_black_hole_spin = 0.998;
     
     // Unpack companion structs for readability:
     const spin_t spin_1 = system_properties.companion[0].spin;
     const spin_t spin_2 = system_properties.companion[1].spin;
     
-    float64_t final_spin_upper_bound = 0.686 + 0.15 * (spin_1.z + spin_2.z);
+    float final_spin_upper_bound = 0.686 + 0.15 * (spin_1.z + spin_2.z);
     final_spin_upper_bound = 
        (final_spin_upper_bound < fabs(spin_1.z))*fabs(spin_1.z) 
      + (final_spin_upper_bound > fabs(spin_1.z))*final_spin_upper_bound;
@@ -350,23 +297,23 @@ timeUnit_t InspiralChirpTimeBound(
     
     // Unpack properties for readability:
     const massUnit_t total_mass           = system_properties.total_mass;
-    const double     symmetric_mass_ratio = 
+    const float     symmetric_mass_ratio = 
         system_properties.symmetric_mass_ratio;
     
     // over-estimate of chi
-    const float64_t chi = fabs(
+    const float chi = fabs(
             ((fabs(spin_1.z) >  fabs(spin_2.z))*spin_1.z)
          +  ((fabs(spin_1.z) <= fabs(spin_2.z))*spin_2.z)
          );
      
-    const float64_t c0 = 
+    const float c0 = 
         fabs(
             TaylorT2Timing_0PNCoeff(
                 total_mass, 
                 symmetric_mass_ratio
             )
         );
-    const float64_t c2 = 
+    const float c2 = 
         TaylorT2Timing_2PNCoeff(symmetric_mass_ratio);
     
     // The 1.5pN spin term is in TaylorT2 is 8*beta/5
@@ -374,12 +321,12 @@ timeUnit_t InspiralChirpTimeBound(
     // [Cutler & Flanagan, Physical Review D 49, 2658 (1994), Eq. (3.21)]
     // which can be written as (113/12)*chi - (19/6)(s1 + s2)
     // and we drop the negative contribution:
-    const float64_t c3 = (226.0/15.0) * chi;
+    const float c3 = (226.0/15.0) * chi;
      
     // There is also a 1.5PN term with eta, but it is negative so do not 
     // include it.
-    const float64_t c4 = TaylorT2Timing_4PNCoeff(symmetric_mass_ratio);
-    const float64_t v = 
+    const float c4 = TaylorT2Timing_4PNCoeff(symmetric_mass_ratio);
+    const float v = 
         cbrt(M_PI*G_SI*total_mass.kilograms*starting_frequency.hertz)/C_SI;
      
     return initTimeSeconds(
@@ -402,27 +349,27 @@ timeUnit_t InspiralRingdownTimeBound(
     ) {
     
     // Waveform generators only go up to 10:
-    const float64_t nefolds = 11; 
+    const float nefolds = 11; 
     
     // Unpack properties for readability:
     const massUnit_t total_mass = system_properties.total_mass;
 
     // Upper bound on the final black hole spin:
-    const float64_t final_spin_upper_bound = 
+    const float final_spin_upper_bound = 
         InspiralFinalBlackHoleSpinBound(system_properties);
 
     // These values come from Table VIII of Berti, Cardoso, and Will with n=0, 
     // m=2 :
-    const float64_t f[] = {1.5251, -1.1568,  0.1292}; 
-    const float64_t q[] = {0.7000,  1.4187, -0.4990}; 
+    const float f[] = {1.5251, -1.1568,  0.1292}; 
+    const float q[] = {0.7000,  1.4187, -0.4990}; 
 
-    const float64_t omega = 
+    const float omega = 
           (f[0] + f[1]*pow(1.0 - final_spin_upper_bound, f[2]))
         / total_mass.seconds;
-    const float64_t Q = q[0] + q[1] * pow(1.0 - final_spin_upper_bound, q[2]);
+    const float Q = q[0] + q[1] * pow(1.0 - final_spin_upper_bound, q[2]);
     
     // See Eq. (2.1) of Berti, Cardoso, and Will:
-    const float64_t tau = 2.0 * Q / omega; 
+    const float tau = 2.0 * Q / omega; 
 
     return initTimeSeconds(nefolds * tau);
 }
@@ -729,5 +676,295 @@ void performIRFFT64(
     free(ifft);
     cudaFree(ifft_g);
 }
+
+// The phasing function for TaylorF2 frequency-domain waveform.
+// This function is tested in ../test/PNCoefficients.c for consistency
+// with the energy and flux in this file.
+
+
+// Taylor coefficients:
+
+inline float TaylorF2Phasing_2PNCoeff(
+    const float eta
+    ) {
+    return 5.0f*(74.3f/8.4f + 11.0f*eta)/9.0f;
+}
+  
+inline float TaylorF2Phasing_3PNCoeff(
+    const float eta
+    ) {
+    return -16.0f*(float)M_PI;
+}
+  
+inline float TaylorF2Phasing_4PNCoeff(
+    const float eta
+    ) {
+    return 5.0f*(3058.673f/7.056f + 5429.0f/7.0f*eta+617.0f*eta*eta)/72.0f;
+}
+
+inline float TaylorF2Phasing_5PNCoeff(
+    const float eta
+    ) {
+    return 5.0f/9.0f*(772.9f/8.4f-13.0f*eta)*(float)M_PI;
+}
+
+inline float TaylorF2Phasing_5PNLogCoeff(
+    const float eta
+    ) {
+    return 5.0f/3.0f*(772.9f/8.4f-13.0f*eta)*(float)M_PI;
+}
+
+inline float TaylorF2Phasing_6PNLogCoeff(
+    const float eta
+    ) {
+    return -684.8f/2.1f;
+}
+
+inline float TaylorF2Phasing_6PNCoeff(
+    const float eta
+    ) {
+   return 
+         11583.231236531f/4.694215680f 
+       - 640.0f/3.0f*PI_POWER_TWO 
+       - 684.8f/2.1f*EULER_MASCHERONI 
+       + eta*(-15737.765635f/3.048192f + 225.5f/1.2f*PI_POWER_TWO) 
+       + eta*eta*76.055f/1.728f 
+       - eta*eta*eta*127.825f/1.296f
+       + TaylorF2Phasing_6PNLogCoeff(eta)*logf(4.0f);
+}
+
+inline float TaylorF2Phasing_7PNCoeff(
+    const float eta
+    ) {
+    return 
+        (float)M_PI*(
+              770.96675f/2.54016f 
+            + 378.515f/1.512f*eta 
+            - 740.45f/7.56f*eta*eta
+        );
+}
+
+inline float TaylorF2Phasing_7PNSOCoeff(
+    const float mByM
+    ) {
+    const float eta = mByM*(1.0f-mByM);
+    
+    return 
+       mByM*(
+           - 17097.8035f/4.8384f
+           + eta*28764.25f/6.72f
+           + eta*eta*47.35f/1.44f 
+           + mByM*(
+               - 7189.233785f/1.524096f
+               + eta*458.555f/3.024f
+               - eta*eta*534.5f/7.2f
+            )
+        );
+}
+
+// Tidal corrections to F2 phasing
+// See arXiv:1101.1673
+inline float TaylorF2Phasing_10PNTidalCoeff(
+    const float mByM // < ratio of object mass to total mass
+    ) {
+    return (-288.0f + 264.0f*mByM)*mByM*mByM*mByM*mByM;
+}
+
+inline float TaylorF2Phasing_12PNTidalCoeff(
+    const float mByM // Ratio of object mass to total mass
+    ) {
+    
+    return 
+        (- 15895.0f/28.0f
+         + 4595.0f/28.0f*mByM 
+         + 5715.0f/14.0f*mByM*mByM 
+         - 325.0f/7.0f*mByM*mByM*mByM
+        )*mByM*mByM*mByM*mByM;
+}
+
+inline float TaylorF2Phasing_13PNTidalCoeff(
+    const float mByM /**< ratio of object mass to total mass */
+    ) { 
+    // literature: Agathos et al (arxiv 1503.0545) eq (5)
+    // the coefficient mByM4 conversion & transformation (6.5PN, 7PN, 7.5PN):
+    // mByM=mA/M: mA= mass star A, M is total mass (mA+mB)
+    // Lambda (unitless) = lambda(m) / mA^5 
+    // to call the function: 
+    // Lambda * XLALSimInspiralTaylorF2Phasing_13PNTidalCoeff 
+    // lambda(m)*mByM^4/mA^5= lambda(m)*(mA/M)^4/(mA)^5= lambda/(M^4*mA) 
+    // =lambda/(mByM*M^5) eq (5) 
+    
+    return mByM*mByM*mByM*mByM*24.0f*(12.0f - 11.0f*mByM)*(float)M_PI;
+}
+  
+
+inline float InspiralTaylorF2Phasing_13PNTidalCoeff(
+     const float mByM // ratio of object mass to total mass
+     ) {
+    //  literature: Agathos et al (arxiv 1503.0545) eq (5)
+    // the coefficient mByM4 conversion & transformation (6.5PN, 7PN, 7.5PN):
+    // mByM=mA/M: mA= mass star A, M is total mass (mA+mB)
+    // Lambda (unitless) = lambda(m) / mA^5 
+    // to call the function: 
+    // Lambda * XLALSimInspiralTaylorF2Phasing_13PNTidalCoeff 
+    // lambda(m)*mByM^4/mA^5= lambda(m)*(mA/M)^4/(mA)^5= lambda/(M^4*mA) 
+    // =lambda/(mByM*M^5) eq (5) 
+    return mByM*mByM*mByM*mByM*24.0f*(12.0f - 11.0f*mByM)*(float)M_PI;
+}
+
+inline float TaylorF2Phasing_14PNTidalCoeff(
+    const float mByM // ratio of object mass to total mass
+    ) {
+    //literature: Agathos et al (arxiv 1503.0545) eq (5)
+    //caveat: these are incomplete terms
+    //conversion see XLALSimInspiralTaylorF2Phasing_13PNTidalCoeff above
+    //--> completed by the terms given in equation (4) of :
+    //Tatsuya Narikawa, Nami Uchikata, Takahiro Tanaka,
+    //"Gravitational-wave constraints on the GWTC-2 events by measuring
+    //the tidal deformability and the spin-induced quadrupole moment",
+    //Phys. Rev. D 104, 084056 (2021), arXiv:2106.09193
+    const float mByM3 = mByM*mByM*mByM;
+    const float mByM4 = mByM3 * mByM;
+    return 
+        - mByM4*5.0f*(
+              193986935.0f/571536.0f 
+            - 14415613.0f/381024.0f*mByM 
+            - 57859.0f/378.0f*mByM*mByM 
+            - 209495.0f/1512.0f*mByM3 
+            + 965.0f/54.0f*mByM4 
+            - 4.00f*mByM4*mByM
+        );
+}
+
+inline float TaylorF2Phasing_15PNTidalCoeff(
+    const float mByM // Ratio of object mass to total mass
+    ) {
+    //literature: Agathos et al (arxiv 1503.0545) eq (5)
+    //conversion see XLALSimInspiralTaylorF2Phasing_13PNTidalCoeff above 
+    //--> corrected by the terms given in equation (4) of :
+    //Tatsuya Narikawa, Nami Uchikata, Takahiro Tanaka,
+    //"Gravitational-wave constraints on the GWTC-2 events by measuring
+    //the tidal deformability and the spin-induced quadrupole moment",
+    //Phys. Rev. D 104, 084056 (2021), arXiv:2106.09193
+    
+    const float mByM2 = mByM*mByM;
+    const float mByM3 = mByM2*mByM;
+    const float mByM4 = mByM3*mByM;
+    return 
+        mByM4*1.0f/28.0f*(float)M_PI*(
+              27719.0f 
+            - 22415.0f*mByM 
+            + 7598.0f*mByM2 
+            - 10520.0f*mByM3
+        );
+}
+
+pn_phasing_series_s PNPhasing_F2(
+    const float   m1, // Masns of body 1, in Msol
+    const float   m2, // Mass of body 2, in Msol
+    const float   chi1L, // Component of dimensionless spin 1 along Lhat
+    const float   chi2L, // Component of dimensionless spin 2 along Lhat
+    const float   chi1sq,// Magnitude of dimensionless spin 1
+    const float   chi2sq, // Magnitude of dimensionless spin 2
+    const float   chi1dotchi2, // Dot product of dimensionles spin 1 and spin 2
+    const float   lambda1,
+    const float   lambda2,
+    const int32_t tidal_pn_order
+    ) {
+    
+    const float mtot = m1 + m2;
+    const float eta  = m1*m2/mtot/mtot;
+    const float m1M  = m1/mtot;
+    const float m2M  = m2/mtot;
+
+    const float pfaN = 3.0f/(128.0f * eta);
+
+    pn_phasing_series_s pfa;
+    
+    memset(pfa.v, 0, sizeof(double) * (PN_PHASING_SERIES_MAX_ORDER + 1));
+    
+    pfa.v[0]     = 1.0f;
+    pfa.v[1]     = 0.0f;
+    pfa.v[2]     = TaylorF2Phasing_2PNCoeff(eta);
+    pfa.v[3]     = TaylorF2Phasing_3PNCoeff(eta);
+    pfa.v[4]     = TaylorF2Phasing_4PNCoeff(eta);
+    pfa.v[5]     = TaylorF2Phasing_5PNCoeff(eta);
+    pfa.vlogv[5] = TaylorF2Phasing_5PNLogCoeff(eta);
+    pfa.v[6]     = TaylorF2Phasing_6PNCoeff(eta);
+    pfa.vlogv[6] = TaylorF2Phasing_6PNLogCoeff(eta);
+    pfa.v[7]     = TaylorF2Phasing_7PNCoeff(eta)
+                 + TaylorF2Phasing_7PNSOCoeff(m1M)*chi1L
+                 + TaylorF2Phasing_7PNSOCoeff(m2M)*chi2L;
+                 
+    switch(tidal_pn_order)
+    {
+        case LAL_SIM_INSPIRAL_TIDAL_ORDER_75PN:
+            pfa.v[15] = lambda1*TaylorF2Phasing_15PNTidalCoeff(m1M) 
+                      + lambda2*TaylorF2Phasing_15PNTidalCoeff(m2M);
+        case LAL_SIM_INSPIRAL_TIDAL_ORDER_DEFAULT:
+        case LAL_SIM_INSPIRAL_TIDAL_ORDER_7PN:
+            pfa.v[14] = lambda1*TaylorF2Phasing_14PNTidalCoeff(m1M) 
+                      + lambda2*TaylorF2Phasing_14PNTidalCoeff(m2M);
+        case LAL_SIM_INSPIRAL_TIDAL_ORDER_65PN:
+            pfa.v[13] = lambda1*TaylorF2Phasing_13PNTidalCoeff(m1M) 
+                      + lambda2*TaylorF2Phasing_13PNTidalCoeff(m2M);
+        case LAL_SIM_INSPIRAL_TIDAL_ORDER_6PN:
+            pfa.v[12] = lambda1*TaylorF2Phasing_12PNTidalCoeff(m1M) 
+                      + lambda2*TaylorF2Phasing_12PNTidalCoeff(m2M);
+        case LAL_SIM_INSPIRAL_TIDAL_ORDER_5PN:
+            pfa.v[10] = lambda1*TaylorF2Phasing_10PNTidalCoeff(m1M) 
+                      + lambda2*TaylorF2Phasing_10PNTidalCoeff(m2M);
+        case LAL_SIM_INSPIRAL_TIDAL_ORDER_0PN:
+            break;
+        default:
+        fprintf(
+            stderr, 
+            "%s:\nWarning! Invalid tidal PN order (%i)\n.",
+            __func__, tidal_pn_order
+        );    
+        break;
+    }
+    
+    // At the very end, multiply everything in the series by pfaN:
+    for(int32_t index = 0; index < PN_PHASING_SERIES_MAX_ORDER + 1; index++)
+    {
+        pfa.v      [index] *= pfaN;
+        pfa.vlogv  [index] *= pfaN;
+        pfa.vlogvsq[index] *= pfaN;
+    }
+    
+    return pfa;
+}
+
+// brief Returns structure containing TaylorF2 phasing coefficients for given
+// physical parameters.
+pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
+    const system_properties_s system_properties,
+    const int32_t             tidal_pn_order
+    ) {
+    
+    const companion_s companion_1 = system_properties.companion[0];
+    const companion_s companion_2 = system_properties.companion[1];
+    
+    pn_phasing_series_s phasing_series =
+        PNPhasing_F2(
+            companion_1.mass.msun, 
+            companion_2.mass.msun, 
+            companion_1.spin.z, 
+            companion_2.spin.z, 
+            Square(companion_1.spin.z), 
+            Square(companion_2.spin.z), 
+            companion_1.spin.z*companion_2.spin.z,
+            companion_1.lambda,
+            companion_2.lambda,
+            tidal_pn_order
+        );
+
+    return phasing_series;
+}
+
+
+//XLALSimInspiralTaylorF2AlignedPhasing
+  
 
 #endif
