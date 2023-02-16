@@ -19,12 +19,10 @@
 #define EULER_MASCHERONI 0.577215664901532860606512090082402431f
 #define NUM_POLARIZATION_STATES 2
 
-typedef double float64_t;
-
 typedef struct {
 	float x; 
 	float y;
-} float64_2_t;
+} float2_t;
 
 // Mass functions:
 

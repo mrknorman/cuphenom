@@ -42,36 +42,73 @@ static void checkSystemParameters(
     const companion_s companion_1 = system_properties.companion[0];
     const companion_s companion_2 = system_properties.companion[1];
     
-    const massUnit_t total_mass = system_properties.total_mass;
+    const massUnit_t   total_mass = system_properties.total_mass;
+    const lengthUnit_t distance   = system_properties.distance;
     
-    if (companion_1.mass.kilograms < initMassSolarMass(0.09).kilograms)
+    if (companion_1.mass.kilograms < 0.0f)
+    {
+        fprintf(
+            stderr,
+            "%s:\n"
+            "Warning! Mass 1 (%f) must be positive.\n",
+            __func__,
+            companion_1.mass.kilograms
+        );   
+    }
+    if (companion_2.mass.kilograms < 0.0f)
+    {
+        fprintf(
+            stderr,
+            "%s:\n"
+            "Warning! Mass 2 (%f) must be positive.\n",
+            __func__,
+            companion_2.mass.kilograms
+        );   
+    }
+    if (distance.meters <= 0.0f)
+    {
+        fprintf(
+            stderr,
+            "%s:\n"
+            "Warning! Distance (%f) must be non-negative.\n",
+            __func__,
+            distance.meters
+        );   
+    }
+    if (companion_1.mass.kilograms < initMassSolarMass(0.09f).kilograms)
     {
         fprintf(
             stderr, 
-            "Warning %s \n Small value of m1 = %e (kg) = %e (Msun) requested.\n"
-            " Perhaps you have a unit conversion error?\n", 
-            __func__, companion_1.mass.kilograms, companion_1.mass.msun
+            "%s:\n Warning! Small value of m1 = %e (kg) = %e (Msun) requested.\n"
+            "Perhaps you have a unit conversion error?\n", 
+            __func__, 
+            companion_1.mass.kilograms, 
+            companion_1.mass.msun
         );
     }
-    if (companion_2.mass.kilograms < initMassSolarMass(0.09).kilograms)
+    if (companion_2.mass.kilograms < initMassSolarMass(0.09f).kilograms)
     {
          fprintf(stderr,
             "%s:\n Small value of m2 = %e (kg) = %e (Msun) requested.\n"
             "Perhaps you have a unit conversion error?\n", 
-            __func__, companion_2.mass.kilograms, companion_2.mass.msun
+            __func__, 
+            companion_2.mass.kilograms, 
+            companion_2.mass.msun
         );
     }
-    if (total_mass.kilograms > initMassSolarMass(1000).kilograms)
+    if (total_mass.kilograms > initMassSolarMass(1000.0f).kilograms)
     {
          fprintf(
              stderr,
             "%s:\n Warning! Large value of total mass m1+m2 = %e (kg) = %e "
             "(Msun) requested.\nSignal not likely to be in band of ground-based"
             " detectors.\n", 
-            __func__, total_mass.kilograms, total_mass.msun
+            __func__, 
+            total_mass.kilograms, 
+            total_mass.msun
         );
     }
-    if (calculateSpinNorm(companion_1.spin) > 1.000001)
+    if (calculateSpinNorm(companion_1.spin) > 1.000001f)
     {
          fprintf(
              stderr, 
@@ -81,7 +118,7 @@ static void checkSystemParameters(
              companion_1.spin.x, companion_1.spin.y, companion_1.spin.z
         );
     }
-    if(calculateSpinNorm(companion_2.spin) > 1.000001)
+    if(calculateSpinNorm(companion_2.spin) > 1.000001f)
     {
         fprintf(
             stderr, 
@@ -89,6 +126,34 @@ static void checkSystemParameters(
             "sure you want to violate the Kerr bound?\n", 
             __func__, 
             companion_2.spin.x, companion_2.spin.y, companion_2.spin.z
+        );
+    }
+
+    const float mass_ratio = 
+        companion_1.mass.kilograms/companion_2.mass.kilograms;
+    const float max_mass_ratio = 1000.0f;
+    
+    if (mass_ratio > max_mass_ratio)
+    {    
+        fprintf(
+            stderr,
+            "%s:\n"
+            "Warning! Mass ratio (%f) is larger than maximum max ratio allowed "
+            "for model (%f). \n",
+            __func__,
+            mass_ratio,
+            max_mass_ratio
+        );
+    }
+    if (
+        (((companion_1.spin.z >  1.0f) || (companion_1.spin.z < -1.0f)) 
+        || (companion_2.spin.z >  1.0f)) || (companion_2.spin.z < -1.0f)
+    ) {
+        fprintf(
+           stderr,
+           "%s:\n"
+           "Warning! Spins outside the range [-1,1] are not supported. \n",
+            __func__
         );
     }
 }
@@ -112,11 +177,11 @@ system_properties_s initBinarySystem(
     system_properties.redshift = redshift;
 
     // Apply redshift correction to dimensionful source-frame quantities:
-    companion_a.mass = scaleMass(companion_a.mass, 1.0 + redshift);
-    companion_b.mass = scaleMass(companion_b.mass, 1.0 + redshift);
+    companion_a.mass = scaleMass(companion_a.mass, 1.0f + redshift);
+    companion_b.mass = scaleMass(companion_b.mass, 1.0f + redshift);
     
     // Change from comoving (transverse) distance to luminosity distance:
-    system_properties.distance = scaleLength(distance, 1.0 + redshift);  
+    system_properties.distance = scaleLength(distance, 1.0f + redshift);  
     
     // Set companion one as higher mass input:
     if (companion_a.mass.kilograms > companion_b.mass.kilograms)
@@ -222,14 +287,14 @@ inline float TaylorT2Timing_2PNCoeff(
 inline float TaylorT2Timing_4PNCoeff(
     const float sym_mass_ratio
     ) {
-    return 30.58673/5.08032 + 54.29/5.04*sym_mass_ratio 
-         + 61.7/7.2*sym_mass_ratio*sym_mass_ratio;
+    return 30.58673f/5.08032f + 54.29f/5.04f*sym_mass_ratio 
+         + 61.7f/7.2f*sym_mass_ratio*sym_mass_ratio;
 }
 
 inline float TaylorT3Frequency_0PNCoeff(
     const massUnit_t mass
     ) {    
-    return 1.0 / (8.0*M_PI*mass.seconds);
+    return 1.0f / (8.0f*(float)M_PI*mass.seconds);
 }
 
 float InspiralFinalBlackHoleSpinBound(
@@ -243,19 +308,19 @@ float InspiralFinalBlackHoleSpinBound(
     // extreme mass case).
 
     // Function constants:
-    const float maximum_black_hole_spin = 0.998;
+    const float maximum_black_hole_spin = 0.998f;
     
     // Unpack companion structs for readability:
     const spin_t spin_1 = system_properties.companion[0].spin;
     const spin_t spin_2 = system_properties.companion[1].spin;
     
-    float final_spin_upper_bound = 0.686 + 0.15 * (spin_1.z + spin_2.z);
+    float final_spin_upper_bound = 0.686f + 0.15f*(spin_1.z + spin_2.z);
     final_spin_upper_bound = 
-       (final_spin_upper_bound < fabs(spin_1.z))*fabs(spin_1.z) 
-     + (final_spin_upper_bound > fabs(spin_1.z))*final_spin_upper_bound;
+       (final_spin_upper_bound < fabsf(spin_1.z))*fabsf(spin_1.z) 
+     + (final_spin_upper_bound > fabsf(spin_1.z))*final_spin_upper_bound;
     final_spin_upper_bound = 
-       (final_spin_upper_bound < fabs(spin_2.z))*fabs(spin_2.z) 
-     + (final_spin_upper_bound > fabs(spin_2.z))*final_spin_upper_bound;
+       (final_spin_upper_bound < fabsf(spin_2.z))*fabsf(spin_2.z) 
+     + (final_spin_upper_bound > fabsf(spin_2.z))*final_spin_upper_bound;
 
     // It is possible that |S1z| or |S2z| >= 1, but s must be less than 1
     // (0th law of thermodynamics) so provide a maximum value for s:
@@ -272,7 +337,7 @@ temporal_properties_s fixReferenceFrequency(
           temporal_properties_s temporal_properties,
     const Approximant           approximant
 ) {
-     if (temporal_properties.reference_frequency.hertz == 0)
+     if (temporal_properties.reference_frequency.hertz == 0.0f)
      {
         switch (approximant) 
         {
@@ -297,17 +362,17 @@ timeUnit_t InspiralChirpTimeBound(
     
     // Unpack properties for readability:
     const massUnit_t total_mass           = system_properties.total_mass;
-    const float     symmetric_mass_ratio = 
+    const float      symmetric_mass_ratio = 
         system_properties.symmetric_mass_ratio;
     
     // over-estimate of chi
-    const float chi = fabs(
-            ((fabs(spin_1.z) >  fabs(spin_2.z))*spin_1.z)
-         +  ((fabs(spin_1.z) <= fabs(spin_2.z))*spin_2.z)
+    const float chi = fabsf(
+            ((fabsf(spin_1.z) >  fabsf(spin_2.z))*spin_1.z)
+         +  ((fabsf(spin_1.z) <= fabsf(spin_2.z))*spin_2.z)
          );
      
     const float c0 = 
-        fabs(
+        fabsf(
             TaylorT2Timing_0PNCoeff(
                 total_mass, 
                 symmetric_mass_ratio
@@ -321,16 +386,16 @@ timeUnit_t InspiralChirpTimeBound(
     // [Cutler & Flanagan, Physical Review D 49, 2658 (1994), Eq. (3.21)]
     // which can be written as (113/12)*chi - (19/6)(s1 + s2)
     // and we drop the negative contribution:
-    const float c3 = (226.0/15.0) * chi;
+    const float c3 = (226.0f/15.0f) * chi;
      
     // There is also a 1.5PN term with eta, but it is negative so do not 
     // include it.
     const float c4 = TaylorT2Timing_4PNCoeff(symmetric_mass_ratio);
     const float v = 
-        cbrt(M_PI*G_SI*total_mass.kilograms*starting_frequency.hertz)/C_SI;
+        cbrtf((float)M_PI*G_SI*total_mass.kilograms*starting_frequency.hertz)/C_SI;
      
     return initTimeSeconds(
-        c0 * pow(v, -8) * (1.0 + (c2 + (c3 + c4 * v) * v) * v * v)
+        c0 * powf(v, -8.0f) * (1.0f + (c2 + (c3 + c4 * v) * v) * v * v)
     );
 }
 
@@ -341,7 +406,7 @@ inline timeUnit_t InspiralMergeTimeBound(
     // Unpack properties for readability:
     const massUnit_t total_mass = system_properties.total_mass;
     
-    return initTimeSeconds(2.0*M_PI*((9.0*total_mass.meters)/(C_SI/3.0)));
+    return initTimeSeconds(2.0f*(float)M_PI*((9.0f*total_mass.meters)/(C_SI/3.0f)));
 }
 
 timeUnit_t InspiralRingdownTimeBound(
@@ -349,7 +414,7 @@ timeUnit_t InspiralRingdownTimeBound(
     ) {
     
     // Waveform generators only go up to 10:
-    const float nefolds = 11; 
+    const float nefolds = 11.0f; 
     
     // Unpack properties for readability:
     const massUnit_t total_mass = system_properties.total_mass;
@@ -360,16 +425,16 @@ timeUnit_t InspiralRingdownTimeBound(
 
     // These values come from Table VIII of Berti, Cardoso, and Will with n=0, 
     // m=2 :
-    const float f[] = {1.5251, -1.1568,  0.1292}; 
-    const float q[] = {0.7000,  1.4187, -0.4990}; 
+    const float f[] = {1.5251f, -1.1568f,  0.1292f}; 
+    const float q[] = {0.7000f,  1.4187f, -0.4990f}; 
 
     const float omega = 
-          (f[0] + f[1]*pow(1.0 - final_spin_upper_bound, f[2]))
+          (f[0] + f[1]*powf(1.0f - final_spin_upper_bound, f[2]))
         / total_mass.seconds;
-    const float Q = q[0] + q[1] * pow(1.0 - final_spin_upper_bound, q[2]);
+    const float Q = q[0] + q[1] * powf(1.0f - final_spin_upper_bound, q[2]);
     
     // See Eq. (2.1) of Berti, Cardoso, and Will:
-    const float tau = 2.0 * Q / omega; 
+    const float tau = 2.0f * Q / omega; 
 
     return initTimeSeconds(nefolds * tau);
 }
@@ -382,15 +447,15 @@ frequencyUnit_t InspiralChirpStartFrequencyBound(
     // Unpack properties for readability:
     const massUnit_t total_mass = 
         system_properties.total_mass;
-    const double     symmetric_mass_ratio = 
+    const float symmetric_mass_ratio = 
         system_properties.symmetric_mass_ratio;
      
-    double c0 = TaylorT3Frequency_0PNCoeff(total_mass);
+    const float c0 = TaylorT3Frequency_0PNCoeff(total_mass);
     return initFrequencyHertz(
-            c0*pow( 
-                   5.0 * total_mass.seconds 
+            c0*powf( 
+                   5.0f * total_mass.seconds 
                 / (symmetric_mass_ratio * duration.seconds), 
-                  3.0 / 8.0
+                  3.0f / 8.0f
             )
         );
 }
@@ -400,7 +465,7 @@ static void checkFreqeuncyParameters(
     const frequencyUnit_t starting_frequency
     ) {
     
-    if (sampling_interval.seconds > 1.0)
+    if (sampling_interval.seconds > 1.0f)
     {
         fprintf(
             stderr,
@@ -409,7 +474,7 @@ static void checkFreqeuncyParameters(
             __func__, sampling_interval.seconds
         );
     }
-    if (sampling_interval.seconds < 1.0/16385.0)
+    if (sampling_interval.seconds < 1.0f/16385.0f)
     {
         fprintf(
             stderr,
@@ -418,7 +483,7 @@ static void checkFreqeuncyParameters(
             __func__, sampling_interval.seconds
         );
     }
-    if(starting_frequency.hertz < 1.0)
+    if(starting_frequency.hertz < 1.0f)
     {
         fprintf(
             stderr, 
@@ -428,7 +493,7 @@ static void checkFreqeuncyParameters(
             __func__, starting_frequency.hertz
         );
     }
-    if(starting_frequency.hertz > 40.000001)
+    if(starting_frequency.hertz > 40.000001f)
     {
          fprintf(
              stderr, 
@@ -468,13 +533,13 @@ temporal_properties_s initTemporalProperties(
     
     // Calculate ending frequency:
     temporal_properties.ending_frequency = 
-        initFrequencyHertz(0.5/sampling_interval.seconds);
+        initFrequencyHertz(0.5f/sampling_interval.seconds);
 
     // If the requested low frequency is below the lowest Kerr ISCO
     // frequency then change it to that frequency:
     const frequencyUnit_t kerr_isco_frequency = 
         initFrequencyHertz(
-            1.0 / (pow(9.0, 1.5)*M_PI*system_properties.total_mass.seconds)
+            1.0f / (powf(9.0f, 1.5f)*(float)M_PI*system_properties.total_mass.seconds)
         );
     
     if (starting_frequency.hertz > kerr_isco_frequency.hertz)
@@ -513,7 +578,7 @@ temporal_properties_s initTemporalProperties(
             4,
             scaleTime(
                 temporal_properties.chirp_time_upper_bound, 
-                (1.0 + EXTRA_TIME_FRACTION)
+                (1.0f + EXTRA_TIME_FRACTION)
             ),
             temporal_properties.merge_time_upper_bound,
             temporal_properties.ringdown_time_upper_bound,
@@ -545,7 +610,8 @@ void castComplex64to32(
 }
 
 void cast32to64(float *in, double *out, int32_t n){
-    for(int32_t i = 0; i< n; i++){
+    for(int32_t i = 0; i< n; i++)
+    {
         out[i] = ((double) in[i]);
     }
 }
@@ -598,13 +664,14 @@ void performIRFFT(
     cudaIRfft(
         num_waveform_samples,
         2,
-        (double) (num_waveform_samples * temporal_properties.sampling_interval.seconds) * 0.5, // I don't know where this factor of 0.5 comes from slightly concerning
+        (double) 
+        ((float)num_waveform_samples * temporal_properties.sampling_interval.seconds) * 0.5, // I don't know where this factor of 0.5 comes from slightly concerning
         (cuFloatComplex*)ifft_g
     );
     
     float *ifft = NULL;
     cudaToHost(
-        ifft_g, 
+        (void**)ifft_g, 
         sizeof(float),
         num_waveform_samples*3,
         (void**) &ifft
@@ -661,7 +728,7 @@ void performIRFFT64(
     
     double *ifft = NULL;
     cudaToHost(
-        ifft_g, 
+        (void**)ifft_g, 
         sizeof(double),
         num_waveform_samples*3,
         (void**) &ifft
@@ -689,10 +756,8 @@ inline float TaylorF2Phasing_2PNCoeff(
     ) {
     return 5.0f*(74.3f/8.4f + 11.0f*eta)/9.0f;
 }
-  
-inline float TaylorF2Phasing_3PNCoeff(
-    const float eta
-    ) {
+
+inline float TaylorF2Phasing_3PNCoeff() {
     return -16.0f*(float)M_PI;
 }
   
@@ -714,9 +779,7 @@ inline float TaylorF2Phasing_5PNLogCoeff(
     return 5.0f/3.0f*(772.9f/8.4f-13.0f*eta)*(float)M_PI;
 }
 
-inline float TaylorF2Phasing_6PNLogCoeff(
-    const float eta
-    ) {
+inline float TaylorF2Phasing_6PNLogCoeff() {
     return -684.8f/2.1f;
 }
 
@@ -730,7 +793,7 @@ inline float TaylorF2Phasing_6PNCoeff(
        + eta*(-15737.765635f/3.048192f + 225.5f/1.2f*PI_POWER_TWO) 
        + eta*eta*76.055f/1.728f 
        - eta*eta*eta*127.825f/1.296f
-       + TaylorF2Phasing_6PNLogCoeff(eta)*logf(4.0f);
+       + TaylorF2Phasing_6PNLogCoeff()*logf(4.0f);
 }
 
 inline float TaylorF2Phasing_7PNCoeff(
@@ -864,9 +927,6 @@ pn_phasing_series_s PNPhasing_F2(
     const float   m2, // Mass of body 2, in Msol
     const float   chi1L, // Component of dimensionless spin 1 along Lhat
     const float   chi2L, // Component of dimensionless spin 2 along Lhat
-    const float   chi1sq,// Magnitude of dimensionless spin 1
-    const float   chi2sq, // Magnitude of dimensionless spin 2
-    const float   chi1dotchi2, // Dot product of dimensionles spin 1 and spin 2
     const float   lambda1,
     const float   lambda2,
     const int32_t tidal_pn_order
@@ -886,12 +946,12 @@ pn_phasing_series_s PNPhasing_F2(
     pfa.v[0]     = 1.0f;
     pfa.v[1]     = 0.0f;
     pfa.v[2]     = TaylorF2Phasing_2PNCoeff(eta);
-    pfa.v[3]     = TaylorF2Phasing_3PNCoeff(eta);
+    pfa.v[3]     = TaylorF2Phasing_3PNCoeff();
     pfa.v[4]     = TaylorF2Phasing_4PNCoeff(eta);
     pfa.v[5]     = TaylorF2Phasing_5PNCoeff(eta);
     pfa.vlogv[5] = TaylorF2Phasing_5PNLogCoeff(eta);
     pfa.v[6]     = TaylorF2Phasing_6PNCoeff(eta);
-    pfa.vlogv[6] = TaylorF2Phasing_6PNLogCoeff(eta);
+    pfa.vlogv[6] = TaylorF2Phasing_6PNLogCoeff();
     pfa.v[7]     = TaylorF2Phasing_7PNCoeff(eta)
                  + TaylorF2Phasing_7PNSOCoeff(m1M)*chi1L
                  + TaylorF2Phasing_7PNSOCoeff(m2M)*chi2L;
@@ -952,9 +1012,6 @@ pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
             companion_2.mass.msun, 
             companion_1.spin.z, 
             companion_2.spin.z, 
-            Square(companion_1.spin.z), 
-            Square(companion_2.spin.z), 
-            companion_1.spin.z*companion_2.spin.z,
             companion_1.lambda,
             companion_2.lambda,
             tidal_pn_order

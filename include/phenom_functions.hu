@@ -169,10 +169,6 @@ extern "C" complex_waveform_axes_s generatePhenomD(
         exit(1);
     }
     
-    // Assign device memory:
-    cuFloatComplex *strain_fd_g            = NULL;
-             float *frequency_axis_hertz_g = NULL;  
-    
     complex_strain_array_s complex_strain_array;
     cudaCallocateDeviceMemory(
         num_strain_axis_samples,

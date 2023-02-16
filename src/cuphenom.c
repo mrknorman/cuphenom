@@ -20,7 +20,7 @@ frequencyUnit_t calcMinimumFrequency(
      * Calculates minimum frequency based on inputted masses.
      */
     
-    const float64_t MC  = 
+    const double MC  = 
 		pow(
 			((((double)mass_1.kilograms*(double)mass_2.kilograms)*((double)mass_1.kilograms*(double)mass_2.kilograms)*
 			  ((double)mass_1.kilograms*(double)mass_2.kilograms))/((double)mass_1.kilograms+(double)mass_2.kilograms)),
@@ -45,13 +45,18 @@ frequencyUnit_t calcMinimumFrequency2(
      * Calculates minimum frequency based on inputted masses.
      */
     
-    const double MC  = 
+    const float MC = (float)
 		pow(
-			(((mass_1.kilograms*mass_2.kilograms)*(mass_1.kilograms*mass_2.kilograms)*
-			  (mass_1.kilograms*mass_2.kilograms))/(mass_1.kilograms+mass_2.kilograms)),
-			(1.0/5.0));
-    float min_frequency_hertz = powf((duration.seconds/5.0f),(-3.0f/8.0f))*(1.0f/(8.0f*M_PI))
-            *(powf((G_SI*MC/(C_SI*C_SI*C_SI)),(-5.0f/8.0f)));
+			(((mass_1.kilograms*mass_2.kilograms)
+              *(mass_1.kilograms*mass_2.kilograms)*
+			  (mass_1.kilograms*mass_2.kilograms))
+             /(mass_1.kilograms+mass_2.kilograms)),
+			(1.0/5.0)
+        );
+    float min_frequency_hertz = 
+        powf((duration.seconds/5.0f),(-3.0f/8.0f))
+        *(1.0f/(8.0f*(float)M_PI))
+        *(powf((G_SI*MC/(C_SI*C_SI*C_SI)),(-5.0f/8.0f)));
   
     min_frequency_hertz =
         (1.0f > min_frequency_hertz) + (1.0f <= min_frequency_hertz)
@@ -86,7 +91,7 @@ void addLinearArray(
 int32_t plotWaveform(
     const int32_t      verbosity,
 	const timeUnit_t   duration,
-          float64_2_t *strain,
+          float2_t *strain,
 	const int32_t      num_samples,
     const char        *output_file_name
     ) {
@@ -206,9 +211,9 @@ int32_t plotWaveform(
 int32_t plotWaveformComparison(
     const int32_t      verbosity,
 	const timeUnit_t   duration,
-          float64_2_t *strain_one,
+          float2_t *strain_one,
 		  char        *strain_one_name,
-	      float64_2_t *strain_two,
+	      float2_t *strain_two,
 		  char        *strain_two_name,
 	const int32_t      num_samples,
     const char        *output_file_name
@@ -376,7 +381,7 @@ int32_t testRunTime(
 	const int32_t         num_tests
 	) {
 	
-	float64_2_t *strain = NULL;
+	float2_t *strain = NULL;
 	
 	float execution_time_lal = 0.0, execution_time_cuda = 0.0;
         
@@ -436,7 +441,7 @@ int32_t main(){
     const float inclination_radians =    1.0f;
     const float distance_mpc        = 1000.0f;
 	
-	float64_2_t *lal_strain = NULL, *cuda_strain = NULL, *zombie_strain = NULL;
+	float2_t *lal_strain = NULL, *cuda_strain = NULL, *zombie_strain = NULL;
 		
 	const massUnit_t      mass_1      = initMassSolarMass(mass_1_msun);
 	const massUnit_t      mass_2      = initMassSolarMass(mass_2_msun);
@@ -487,23 +492,23 @@ int32_t main(){
     );
     #endif
     
-	float64_2_t *difference = malloc(sizeof(float64_2_t)*(size_t)num_samples);
-	float64_2_t  sum            = {.x = 0.0f, .y = 0.0f};
-    float64_2_t  difference_sum = {.x = 0.0f, .y = 0.0f};
+	float2_t *difference     = malloc(sizeof(float2_t)*(size_t)num_samples);
+	float2_t  sum            = {.x = 0.0f, .y = 0.0f};
+    float2_t  difference_sum = {.x = 0.0f, .y = 0.0f};
 
 	for (int32_t index = 0; index < num_samples; index++)
 	{
-		difference[index].x = fabs(lal_strain[index].x - cuda_strain[index].x);
-		difference[index].y = fabs(lal_strain[index].y - cuda_strain[index].y);
+		difference[index].x = fabsf(lal_strain[index].x - cuda_strain[index].x);
+		difference[index].y = fabsf(lal_strain[index].y - cuda_strain[index].y);
 		
-        sum.x += fabs(lal_strain[index].x); sum.y += fabs(lal_strain[index].y); 
+        sum.x += fabsf(lal_strain[index].x); sum.y += fabsf(lal_strain[index].y); 
 		difference_sum.x += difference[index].x; 
         difference_sum.y += difference[index].y;
 	}
 	
-	printf("Difference: %.4f%, %.4f% \n",  
-        (difference_sum.x/sum.x) * 100.0,
-        (difference_sum.y/sum.y) * 100.0);
+	printf("Difference: %.4f%%, %.4f%% \n", 
+        (difference_sum.x/sum.x) * 100.0f,
+        (difference_sum.y/sum.y) * 100.0f);
 	
 	// Plotting:
 		

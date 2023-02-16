@@ -2,29 +2,29 @@
 #include "phenomd_structures.h"
 
 
-static inline float Square(
+inline float Square(
     const float number
 ) {
     return number*number;
 }
 
-static inline float Cube(
+inline float Cube(
     const float number)
 {
     return number*number*number;
 }
 
-static inline float Quart(float number)
+inline float Quart(float number)
 {
     float pow2 = Square(number);
     return pow2 * pow2;
 }
 
-inline size_t calcNextPow2(const float n)
+inline int32_t calcNextPow2(const float n)
 {
    // Use pow here, not bit-wise shift, as the latter seems to run against an
    // upper cutoff long before SIZE_MAX, at least on some platforms:
-   return (size_t) pow(2,ceil(log2(n)));
+   return (int32_t) powf(2.0f,ceilf(log2f(n)));
 }
 
 // See phenomd_data.h for the coefficient terms.
@@ -42,7 +42,7 @@ inline float calcCoefficient(
    + (terms[8] + terms[9]*eta + terms[10]*eta2)*xi*xi)*xi;
 }
 
-void *calcCoefficients(
+void calcCoefficients(
     const float  **terms,
     const size_t   num_terms,
     const float    eta,
@@ -79,7 +79,7 @@ inline float subtract3PNSS(
     const float mass_2_msun = system_properties.companion[1].mass.msun;
     
     const float m1M = mass_1_msun / system_properties.total_mass.msun;
-    const float m2M = mass_1_msun / system_properties.total_mass.msun;
+    const float m2M = mass_2_msun / system_properties.total_mass.msun;
     
     const float chi_1 = system_properties.companion[0].spin.z;
     const float chi_2 = system_properties.companion[1].spin.z;

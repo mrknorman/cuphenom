@@ -12,7 +12,7 @@ void generatePhenomLAL(
     const timeUnit_t        duration, 
     const angularUnit_t     inclination, 
     const lengthUnit_t      distance, 
-          float64_2_t     **ret_strain
+          float2_t        **ret_strain
     ) {
 	
 	const int32_t num_samples = 
@@ -79,15 +79,15 @@ void generatePhenomLAL(
 		);
 	}
 	
-	size_t new_array_size = (size_t)num_samples * sizeof(float64_2_t);
+	size_t new_array_size = (size_t)num_samples * sizeof(float2_t);
 
-	float64_2_t *strain = (float64_2_t*)malloc(new_array_size);
+	float2_t *strain = (float2_t*)malloc(new_array_size);
 	int32_t new_waveform_index = 0;
     for (int32_t index = 0; index < num_samples; index++) 
 	{	
 		new_waveform_index = waveform_num_samples - num_samples - 1 + index;
-		strain[index].x = (float64_t)hplus->data->data[new_waveform_index];
-		strain[index].y = (float64_t)hcross->data->data[new_waveform_index];
+		strain[index].x = (float)hplus->data->data[new_waveform_index];
+		strain[index].y = (float)hcross->data->data[new_waveform_index];
     }
 	
 	free(hcross->data->data); free(hplus->data->data);
