@@ -55,13 +55,12 @@ float Nudge(
 }
 
 complex_waveform_axes_s _cuPhenomDGenerateFD(
+     const system_properties_s system_properties,
      const int32_t             num_strain_axis_samples,
      const frequencyUnit_t     starting_frequency,
      const frequencyUnit_t     ending_frequency,
      const frequencyUnit_t     frequency_interval,      
-     const angularUnit_t       reference_phase,      // phase at reference frequency
      const frequencyUnit_t     reference_frequency,  // reference frequency 
-     const system_properties_s system_properties,
      NRTidal_version_type      NRTidal_version               // NRTidal version; either NRTidal_V or NRTidalv2_V or NoNRT_V in case of BBH baseline
 ) {
     
@@ -82,8 +81,12 @@ complex_waveform_axes_s _cuPhenomDGenerateFD(
     const float chi1 = system_properties.companion[0].spin.z;
     const float chi2 = system_properties.companion[1].spin.z;
     
-    const float distance = system_properties.distance.meters;
+    const float distance    = system_properties.distance.meters;
     const float inclination = system_properties.inclination.radians;
+    // Phase at reference frequency
+    const angularUnit_t reference_phase = 
+        system_properties.reference_orbital_phase;    
+
             
     // Check frequency bounds:
     if (starting_frequency.hertz <= 0.0f)
@@ -254,22 +257,16 @@ complex_waveform_axes_s _cuPhenomDGenerateFD(
 }
 
 complex_waveform_axes_s cuPhenomDGenerateFD(
-    const float phi0,                  /**< Orbital phase at fRef (rad) */
-    const float original_reference_frequency, /**< reference frequency (Hz) */
-    const float deltaF,                /**< Sampling frequency (Hz) */
-    const float m1_SI,                 /**< Mass of companion 1 (kg) */
-    const float m2_SI,                 /**< Mass of companion 2 (kg) */
-    const float chi1,                  /**< Aligned-spin parameter of companion 1 */
-    const float chi2,                  /**< Aligned-spin parameter of companion 2 */
-    const float f_min,                 /**< Starting GW frequency (Hz) */
-    const float f_max,                 /**< End frequency; 0 defaults to Mf = \ref f_CUT */
-    const float distance,               /**< Distance of source (m) */
-    const float inclination,
-    NRTidal_version_type  NRTidal_version /**< Version of NRTides; can be one of NRTidal versions or NoNRT_V for the BBH baseline */
+    const system_properties_s system_properties,
+    const frequencyUnit_t     original_reference_frequency, /**< reference frequency (Hz) */
+    const frequencyUnit_t     frequency_interval,                /**< Sampling frequency (Hz) */
+    const frequencyUnit_t     starting_frequency,                 /**< Starting GW frequency (Hz) */
+    const frequencyUnit_t     old_ending_frequency,                 /**< End frequency; 0 defaults to Mf = \ref f_CUT */
+    NRTidal_version_type      NRTidal_version /**< Version of NRTides; can be one of NRTidal versions or NoNRT_V for the BBH baseline */
     ) {
     
     // Check inputs for sanity:
-    if (original_reference_frequency < 0.0f)
+    if (original_reference_frequency.hertz < 0.0f)
     {
         fprintf(
             stderr,
@@ -277,146 +274,110 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
             "Warning! Original reference frequency (%f) Hz must be positive (or"
             " 0 for \"ignore\" \n",
             __func__,
-            original_reference_frequency
+            original_reference_frequency.hertz
         );   
     }
-    if (deltaF < 0.0f)
+    if (frequency_interval.hertz < 0.0f)
     {
         fprintf(
             stderr,
             "%s:\n"
-            "Warning! Frequency interval (%f) must be positive \n",
+            "Warning! Frequency interval (%f) Hz must be positive \n",
             __func__,
-            deltaF
+            frequency_interval.hertz
         );   
     }
-    if (f_min <= 0.0f)
+    if (starting_frequency.hertz <= 0.0f)
     {
         fprintf(
             stderr,
             "%s:\n"
-            "Warning! F_min (%f) must be non-negative.\n",
+            "Warning! starting_frequency (%f) Hz must be non-negative.\n",
             __func__,
-            f_min
+            starting_frequency.hertz
         );   
     }
-    if (f_max < 0.0f)
+    if (old_ending_frequency.hertz < 0.0f)
     {
         fprintf(
             stderr,
             "%s:\n"
-            "Warning! F_max (%f) must be positive. \n",
+            "Warning! old_ending_frequency (%f) Hz must be positive. \n",
             __func__,
-            f_max
+            old_ending_frequency.hertz
         );   
     }
-        
-    spin_t spin_a = {
-        .x = 0,
-        .y = 0,
-        .z = chi1
-    };
-    
-    spin_t spin_b = {
-        .x = 0,
-        .y = 0,
-        .z = chi2
-    };
-    
-    companion_s companion_a = 
-    {
-        .mass              = initMassKilograms(m1_SI),
-        .spin              = spin_a,
-        .quadrapole_moment = 0.0f,
-        .lambda            = 0.0f
-    };
-    companion_s companion_b = 
-    {
-        .mass              = initMassKilograms(m2_SI),
-        .spin              = spin_b,
-        .quadrapole_moment = 0.0f,
-        .lambda            = 0.0f
-    };
-    
-    system_properties_s system_properties =
-        initBinarySystem(
-            companion_a,
-            companion_b,
-            initLengthMeters(distance),
-            0.0f,
-            initAngleRadians(inclination),
-            initAngleRadians(0.0f),
-            0.0f,
-            0.0f, 
-            0.0f
-        );
-       
+           
     // If no reference frequency given, set it to the starting GW frequency:
-    const float reference_frequency = 
-        (original_reference_frequency == 0.0f) ? 
-            f_min : original_reference_frequency;
+    const frequencyUnit_t new_reference_frequency = 
+        initFrequencyHertz(        
+            (original_reference_frequency.hertz == 0.0f) ? 
+            starting_frequency.hertz : original_reference_frequency.hertz
+        );
 
     const float frequency_cutoff = f_CUT/system_properties.total_mass.seconds;
         
     // Somewhat arbitrary end point for the waveform.
     // Chosen so that the end of the waveform is well after the ringdown.
-    if (frequency_cutoff <= f_min) 
+    if (frequency_cutoff <= starting_frequency.hertz) 
     {
         fprintf(
            stderr,
            "%s:\n"
-           "Warning! (frequency_cutoff: %fHz) <= (f_min = %fHz) \n. \n",
+           "Warning! (frequency_cutoff: %fHz) <= (starting_frequency = %fHz) \n. \n",
             __func__,
             frequency_cutoff,
-            f_min
+            starting_frequency.hertz
         );
     }
 
-    // Default f_max to cuttoff_frequency:
-    float f_max_prime = f_max;
-    f_max_prime = f_max ? f_max : frequency_cutoff;
-    f_max_prime = 
-        (f_max_prime > frequency_cutoff) ? frequency_cutoff : f_max_prime;
+    // Default old_ending_frequency to cuttoff_frequency:
+    float new_ending_frequency_hertz = old_ending_frequency.hertz;
+    new_ending_frequency_hertz = old_ending_frequency.hertz ? old_ending_frequency.hertz : frequency_cutoff;
+    new_ending_frequency_hertz = 
+        (new_ending_frequency_hertz > frequency_cutoff) ? frequency_cutoff : new_ending_frequency_hertz;
     
-    if (f_max_prime <= f_min)
+    if (new_ending_frequency_hertz <= starting_frequency.hertz)
     {
         fprintf(
             stderr,
             "%s:\n"
-            "Warning! f_max (%f) <= f_min (%f)\n",
+            "Warning! new_ending_frequency_hertz (%f) <= starting_frequency (%f)\n",
             __func__,
-            f_max,
-            f_min
+            new_ending_frequency_hertz,
+            starting_frequency.hertz
         );
     }
+    
+    const frequencyUnit_t new_ending_frequency = 
+        initFrequencyHertz(new_ending_frequency_hertz);
     
     int32_t num_strain_axis_samples = 0; 
     timeUnit_t gps_time = initTimeSeconds(0.0f);
 
     // Set up output array with size closest power of 2:
-    num_strain_axis_samples = calcNextPow2(f_max / deltaF) + 1;
+    num_strain_axis_samples = calcNextPow2(old_ending_frequency.hertz / frequency_interval.hertz) + 1;
 
     // Coalesce at gps_time = 0:
     // Shift by overall length in time:  
-    gps_time = addTimes(2, gps_time, initTimeSeconds(-1.0f / deltaF));
+    gps_time = addTimes(2, gps_time, initTimeSeconds(-1.0f / frequency_interval.hertz));
     
-    if (f_max_prime < f_max) 
+    if (new_ending_frequency.hertz < old_ending_frequency.hertz) 
     {
-        // The user has requested a higher f_max than Mf=frequency_cutoff.resize 
+        // The user has requested a higher old_ending_frequency than Mf=frequency_cutoff.resize 
         // the frequency series to fill with zeros beyond the cutoff frequency:
-        num_strain_axis_samples = calcNextPow2(f_max / deltaF) + 1; 
+        num_strain_axis_samples = calcNextPow2(old_ending_frequency.hertz / frequency_interval.hertz) + 1; 
         // We actually want to have the length be a power of 2 + 1.
     }
-    
+        
     complex_waveform_axes_s waveform_axes = 
         _cuPhenomDGenerateFD(
-            num_strain_axis_samples,
-            initFrequencyHertz(f_min),
-            initFrequencyHertz(f_max_prime),
-            initFrequencyHertz(deltaF), 
-            initAngleRadians(phi0),
-            initFrequencyHertz(reference_frequency),
             system_properties,
+            num_strain_axis_samples,
+            starting_frequency,
+            new_ending_frequency,
+            frequency_interval, 
+            new_reference_frequency,
             NRTidal_version
         );
     
@@ -425,33 +386,33 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
 
 void _convertWaveformAxesToLAL_temp(
     complex_waveform_axes_s waveform_axes,
-    float deltaF,
-    float f_min,
     COMPLEX16FrequencySeries **hptilde,     /**< FD plus polarization */
     COMPLEX16FrequencySeries **hctilde     /**< FD cross polarization */
     ) {
     
-    /* Produce both polarizations */
+    // Produce both polarizations:
     const LALUnit lalStrainUnit = { 0, { 0, 0, 0, 0, 0, 1, 0}, { 0, 0, 0, 0, 0, 0, 0} };
     
-    if (deltaF > 0) // Freqs contains uniform frequency grid with spacing deltaF; we start at frequency 0:
+    // Freqs contains uniform frequency grid with spacing frequency_interval; we 
+    // start at frequency 0:
+    if (waveform_axes.frequency.interval.hertz > 0.0f) 
     { 
-        *hptilde = (void*)
+        *hptilde = 
             XLALCreateCOMPLEX16FrequencySeries(
                 "htilde: FD waveform", 
                 (LIGOTimeGPS){ 0, 0 }, 
                 0.0, 
-                deltaF, 
+                waveform_axes.frequency.interval.hertz, 
                 &lalStrainUnit, 
                 waveform_axes.strain.num_samples
             );
 
-        *hctilde = (void*)
+        *hctilde = 
             XLALCreateCOMPLEX16FrequencySeries(
                 "ctilde: FD waveform", 
                 (LIGOTimeGPS){ 0, 0 }, 
                 0.0, 
-                deltaF, 
+                waveform_axes.frequency.interval.hertz, 
                 &lalStrainUnit, 
                 waveform_axes.strain.num_samples
             );
@@ -462,8 +423,8 @@ void _convertWaveformAxesToLAL_temp(
             XLALCreateCOMPLEX16FrequencySeries(
                 "htilde: FD waveform", 
                 (LIGOTimeGPS){ 0, 0 },
-                f_min, 
-                deltaF, 
+                waveform_axes.frequency.values[0].hertz, 
+                waveform_axes.frequency.interval.hertz, 
                 &lalStrainUnit, 
                 waveform_axes.strain.num_samples
             );
@@ -471,17 +432,17 @@ void _convertWaveformAxesToLAL_temp(
             XLALCreateCOMPLEX16FrequencySeries(
                 "ctilde: FD waveform", 
                 (LIGOTimeGPS){ 0, 0 }, 
-                f_min, 
-                deltaF, 
+                waveform_axes.frequency.values[0].hertz, 
+                waveform_axes.frequency.interval.hertz, 
                 &lalStrainUnit, 
                 waveform_axes.strain.num_samples
             );
     }
 
-    complex_strain_element_c *strain_fd = NULL;
+    complex_strain_element_t *strain_fd = NULL;
     cudaToHost(
         (void*)waveform_axes.strain.values, 
-        sizeof(complex_strain_element_c),
+        sizeof(complex_strain_element_t),
         waveform_axes.strain.num_samples,
         (void**)&strain_fd
     );
@@ -493,307 +454,232 @@ void _convertWaveformAxesToLAL_temp(
     }
 }
 
-int cuInspiralChooseFDWaveform(
-    COMPLEX16FrequencySeries **hptilde,     /**< FD plus polarization */
-    COMPLEX16FrequencySeries **hctilde,     /**< FD cross polarization */
-    const double m1,                         /**< mass of companion 1 (kg) */
-    const double m2,                         /**< mass of companion 2 (kg) */
-    const double S1x,                        /**< x-component of the dimensionless spin of object 1 */
-    const double S1y,                        /**< y-component of the dimensionless spin of object 1 */
-    const double S1z,                        /**< z-component of the dimensionless spin of object 1 */
-    const double S2x,                        /**< x-component of the dimensionless spin of object 2 */
-    const double S2y,                        /**< y-component of the dimensionless spin of object 2 */
-    const double S2z,                        /**< z-component of the dimensionless spin of object 2 */
-    const double distance,                   /**< distance of source (m) */
-    const double inclination,                /**< inclination of source (rad) */
-    const double phiRef,                     /**< reference orbital phase (rad) */
-    const double longAscNodes,               /**< longitude of ascending nodes, degenerate with the polarization angle, Omega in documentation */
-    // frequency sampling parameters, no default value
-    const double deltaF,                     /**< sampling interval (Hz) */
-    const double f_min,                      /**< starting GW frequency (Hz) */
-    const double f_max,                      /**< ending GW frequency (Hz) */
-    double f_ref,                            /**< Reference frequency (Hz) */
-    LALDict *LALparams,                     /**< LAL dictionary containing accessory parameters */
-    const Approximant approximant           /**< post-Newtonian approximant to use for waveform production */
-    ) {
+complex_waveform_axes_s cuInspiralFD(
+    const system_properties_s system_properties,
+    frequencyUnit_t frequency_interval,     // < sampling interval (Hz)
+    frequencyUnit_t old_starting_frequency, // < starting GW frequency (Hz)
+    frequencyUnit_t ending_frequency,       // < ending GW frequency (Hz)
+    frequencyUnit_t reference_frequency,    // < Reference frequency (Hz)
+    Approximant approximant                 // < post-Newtonian approximant to use for waveform production
+    ) {  
+    
+    // Apply condition that ending_frequency rounds to the next power-of-two 
+    // multiple of frequency_interval.
+    // Round ending_frequency / frequency_interval to next power of two.
+    // Set ending_frequency to the new Nyquist frequency.
+    // The length of the chirp signal is then 2 * nyquist_frequency / 
+    // frequency_interval.
+    // The time spacing is 1 / (2 * nyquist_frequency):
+    frequencyUnit_t nyquist_frequency = ending_frequency;
+    int32_t ending_frequency_num_samples = 0, num_samples_exp = 0;
+    if (frequency_interval.hertz != 0) 
+    {
+        ending_frequency_num_samples = 
+            (int32_t)round(ending_frequency.hertz / frequency_interval.hertz);
+                
+        // If not a power of two:
+        if ((ending_frequency_num_samples & (ending_frequency_num_samples - 1))) 
+        { 
+            frexpf(ending_frequency_num_samples, &num_samples_exp);
+            nyquist_frequency = 
+                initFrequencyHertz(
+                    ldexpf(1.0f, num_samples_exp)*frequency_interval.hertz
+                );
+            
+            fprintf(
+                stderr,
+                "%s: \n,"
+                "_max/frequency_interval = %f/%f = %f is not a power of two: "
+                "changing ending_frequency to %f",
+                ending_frequency.hertz, 
+                frequency_interval.hertz, 
+                ending_frequency.hertz/frequency_interval.hertz, 
+                nyquist_frequency.hertz
+            );
+        }
+    }
+    timeUnit_t sampling_interval = initTimeSeconds(0.5f / nyquist_frequency.hertz);
 
-    int ret = 0;
-    unsigned int j = 0;
-  
+    // Generate a FD waveform and condition it by applying tapers at frequencies 
+    // between a frequency below the requested old_starting_frequency and 
+    // new_starting_frequency; also wind the waveform in phase in case it would 
+    // wrap around at the merger time:
+    
+    // If the requested low frequency is below the lowest Kerr ISCO
+    // frequency then change it to that frequency:
+    const frequencyUnit_t kerr_isco_frequency = 
+        calculateKerrISCOFrequency(system_properties);
+    
+    if (old_starting_frequency.hertz > kerr_isco_frequency.hertz)
+    {
+         old_starting_frequency.hertz = kerr_isco_frequency.hertz;
+    }
+    
+    // IMR model: estimate plunge and merger time 
+    // sometimes these waveforms have phases that
+    // cause them to wrap-around an amount equal to
+    // the merger-ringodwn time, so we will undo
+    // that here:
+    const timeUnit_t merge_time_upper_bound = 
+        addTimes(
+            2,
+            InspiralMergeTimeBound(system_properties),
+            InspiralRingdownTimeBound(system_properties)
+        );
+    
+    // Upper bound on the chirp time starting at old_starting_frequency:
+    timeUnit_t chirp_time_upper_bound = 
+        InspiralChirpTimeBound(
+            old_starting_frequency, 
+            system_properties
+        );
+    
+    //  new lower frequency to start the waveform: add some extra early
+    // part over which tapers may be applied, the extra amount being
+    // a fixed fraction of the chirp time; add some additional padding
+    // equal to a few extra cycles at the low frequency as well for
+    // safety and for other routines to use: 
+    const frequencyUnit_t new_starting_frequency = 
+        InspiralChirpStartFrequencyBound(
+            scaleTime(
+                chirp_time_upper_bound, 
+                (1.0f + EXTRA_TIME_FRACTION)
+            ),
+            system_properties
+        );
+    
+    // Revise (over-)estimate of chirp from new start frequency:
+    chirp_time_upper_bound = 
+        InspiralChirpTimeBound(
+            new_starting_frequency, 
+            system_properties
+        );
+
+    // We need a long enough segment to hold a whole chirp with some padding 
+    // length of the chirp in samples:
+    const timeUnit_t extra_time = 
+        initTimeSeconds(EXTRA_CYCLES / old_starting_frequency.hertz);
+    
+    const timeUnit_t total_time_upper_bound =
+        addTimes(
+            3,
+            chirp_time_upper_bound,
+            merge_time_upper_bound,
+            scaleTime(
+                extra_time,
+                2.0f
+            )
+        );
+    
+    const float total_num_samples = 
+        calcNextPow2(total_time_upper_bound.seconds / sampling_interval.seconds);
+    
+    // Frequency resolution:
+    if (frequency_interval.hertz == 0.0f)
+    {
+        frequency_interval.hertz = 1.0f / (total_num_samples * sampling_interval.seconds);
+    }
+    else if (frequency_interval.hertz > 1.0f / (total_num_samples * sampling_interval.seconds))
+    {
+        fprintf(
+            stderr,
+            "%s:\n"
+            "Specified frequency interval of %f Hz is too large for a chirp of "
+            "duration %f s",
+            frequency_interval.hertz,
+            total_num_samples * sampling_interval.seconds
+        );
+    }
+    
+    // Generate the waveform in the frequency domain starting at 
+    // new_starting_frequency:
+    
     complex_waveform_axes_s waveform_axes;
-
     switch (approximant)
     {
         case IMRPhenomD:
         // Call the waveform driver routine:
         waveform_axes = 
-        cuPhenomDGenerateFD(
-        (float)phiRef, 
-        (float)f_ref, 
-        (float)deltaF, 
-        (float)m1, 
-        (float)m2,
-        (float)S1z, 
-        (float)S2z, 
-        (float)f_min, 
-        (float)f_max, 
-        (float)distance, 
-        (float)inclination,
-        4
-        );
-
-        const LALUnit lalStrainUnit = 
-            { 0, { 0, 0, 0, 0, 0, 1, 0}, { 0, 0, 0, 0, 0, 0, 0} };
-        if (deltaF > 0) // Freqs contains uniform frequency grid with spacing deltaF; we start at frequency 0:
-        { 
-            *hptilde = 
-                XLALCreateCOMPLEX16FrequencySeries(
-                    "htilde: FD waveform", 
-                    (LIGOTimeGPS){ 0, 0 }, 
-                    0.0, 
-                    deltaF, 
-                    &lalStrainUnit, 
-                    waveform_axes.strain.num_samples
-                );
-
-            *hctilde = 
-                XLALCreateCOMPLEX16FrequencySeries(
-                    "ctilde: FD waveform", 
-                    (LIGOTimeGPS){ 0, 0 }, 
-                    0.0, 
-                    deltaF, 
-                    &lalStrainUnit, 
-                    waveform_axes.strain.num_samples
-                );
-        }
-        else // freqs contains frequencies with non-uniform spacing; we start at lowest given frequency
-        {
-            *hptilde = 
-                XLALCreateCOMPLEX16FrequencySeries(
-                    "htilde: FD waveform", 
-                    (LIGOTimeGPS){ 0, 0 },
-                    f_min, 
-                    deltaF, 
-                    &lalStrainUnit, 
-                    waveform_axes.strain.num_samples
-                );
-            *hctilde = 
-                XLALCreateCOMPLEX16FrequencySeries(
-                    "ctilde: FD waveform", 
-                    (LIGOTimeGPS){ 0, 0 }, 
-                    f_min, 
-                    deltaF, 
-                    &lalStrainUnit, 
-                    waveform_axes.strain.num_samples
-                );
-        }
-
-        complex_strain_element_c *strain_fd = NULL;
-        cudaToHost(
-        (void*)waveform_axes.strain.values, 
-        sizeof(complex_strain_element_c),
-        waveform_axes.strain.num_samples,
-        (void**)&strain_fd
-        );
-
-
-        for(j = 0; j < (*hptilde)->data->length; j++) 
-        {    
-        (*hctilde)->data->data[j] = (complex double)strain_fd[j].cross;
-        (*hptilde)->data->data[j] = (complex double)strain_fd[j].plus;
-        }
+            cuPhenomDGenerateFD(
+                system_properties,
+                reference_frequency, 
+                frequency_interval, 
+                new_starting_frequency, 
+                ending_frequency, 
+                4
+            );
+        
         break;
 
         case IMRPhenomXPHM:
-            if(f_ref==0.0)
+            if (reference_frequency.hertz == 0.0f)
             {
-                /* Default reference frequency is minimum frequency */
-                f_ref = f_min;
+                // Default reference frequency is minimum frequency:
+                reference_frequency = new_starting_frequency;
             }
 
-            /* Call the main waveform driver. Note that we pass the full spin vectors
-            with XLALSimIMRPhenomXPCalculateModelParametersFromSourceFrame being
-            effectively called in the initialization of the pPrec struct
+            // Call the main waveform driver. Note that we pass the full spin 
+            // vectors with XLALSimIMRPhenomXPCalculateModelParametersFromSourceFrame 
+            // being effectively called in the initialization of the pPrec 
+            // struct
+            
+            /* Disabled for now
+            XLALSimIMRPhenomXPHM(
+                hptilde, hctilde,
+                m1, m2,
+                S1x, S1y, S1z,
+                S2x, S2y, S2z,
+                distance, inclination,
+                phiRef, f_start, ending_frequency, frequency_interval, f_ref, LALparams
+                );
             */
 
-            ret = 
-            XLALSimIMRPhenomXPHM(
-            hptilde, hctilde,
-            m1, m2,
-            S1x, S1y, S1z,
-            S2x, S2y, S2z,
-            distance, inclination,
-            phiRef, f_min, f_max, deltaF, f_ref, LALparams
-            );
-
-            if (ret == XLAL_FAILURE)
-            {
-                //XLAL_ERROR(XLAL_EFUNC);
-            }
         break;
 
         default:
-            XLALPrintError("FD version of approximant not implemented in lalsimulation\n");
-        //XLAL_ERROR(XLAL_EINVAL);
+            fprintf(
+                stderr, 
+                "FD version of approximant not implemented in lalsimulation\n"
+            );
         break;
     }
-
-    double polariz=longAscNodes;
-    if (polariz) {
-        COMPLEX16 tmpP,tmpC;
-        for (UINT4 idx=0;idx<(*hptilde)->data->length;idx++) 
-        {
-            tmpP=(*hptilde)->data->data[idx];
-            tmpC=(*hctilde)->data->data[idx];
-            (*hptilde)->data->data[idx] =cos(2.*polariz)*tmpP+sin(2.*polariz)*tmpC;
-            (*hctilde)->data->data[idx]=cos(2.*polariz)*tmpC-sin(2.*polariz)*tmpP;
-        }
-    }
-
-    //if (ret == XLAL_FAILURE) //XLAL_ERROR(XLAL_EFUNC);
-    if (XLALSimInspiralWaveformParamsLookupEnableLIV(LALparams))
-    ret = XLALSimLorentzInvarianceViolationTerm(hptilde, hctilde, m1/LAL_MSUN_SI, m2/LAL_MSUN_SI, distance, LALparams);
-    //if (ret == XLAL_FAILURE) //XLAL_ERROR(XLAL_EFUNC);
-
-    return ret;
-}
-
-int cuInspiralFD(
-    COMPLEX16FrequencySeries **hptilde,     /**< FD plus polarization */
-    COMPLEX16FrequencySeries **hctilde,     /**< FD cross polarization */
-    companion_s companion_1,
-    companion_s companion_2,
-    double distance,                         /**< distance of source (m) */
-    double inclination,                      /**< inclination of source (rad) */
-    double phiRef,                           /**< reference orbital phase (rad) */
-    double longAscNodes,                     /**< longitude of ascending nodes, degenerate with the polarization angle, Omega in documentation */
-    double deltaF,                           /**< sampling interval (Hz) */
-    double f_min,                            /**< starting GW frequency (Hz) */
-    double f_max,                            /**< ending GW frequency (Hz) */
-    double f_ref,                            /**< Reference frequency (Hz) */
-    LALDict *LALparams,                     /**< LAL dictionary containing accessory parameters */
-    Approximant approximant                 /**< post-Newtonian approximant to use for waveform production */
-    ) {  
     
-    double m1  = companion_1.mass.kilograms; 
-    double m2  = companion_2.mass.kilograms; 
-    double S1x = companion_1.spin.x; 
-    double S1y = companion_1.spin.y; 
-    double S1z = companion_1.spin.z; 
-    double S2x = companion_2.spin.x; 
-    double S2y = companion_2.spin.y;
-    double S2z = companion_2.spin.z;
-    
-    double  chirplen, deltaT, f_nyquist;
-    int32_t chirplen_exp;
-    int32_t n;
+    waveform_axes.frequency.interval = frequency_interval;
 
-    /* Apply condition that f_max rounds to the next power-of-two multiple
-    * of deltaF.
-    * Round f_max / deltaF to next power of two.
-    * Set f_max to the new Nyquist frequency.
-    * The length of the chirp signal is then 2 * f_nyquist / deltaF.
-    * The time spacing is 1 / (2 * f_nyquist) */
-    f_nyquist = f_max;
-     if (deltaF != 0) {
-         n = (int32_t) round(f_max / deltaF);
-         if ((n & (n - 1))) { /* not a power of 2 */
-            frexp(n, &chirplen_exp);
-            f_nyquist = ldexp(1.0, chirplen_exp) * deltaF;
-            XLAL_PRINT_WARNING("f_max/deltaF = %g/%g = %g is not a power of two: changing f_max to %g", f_max, deltaF, f_max/deltaF, f_nyquist);
-         }
-     }
-    deltaT = 0.5 / f_nyquist;
-
-    /* generate a FD waveform and condition it by applying tapers at
-    * frequencies between a frequency below the requested f_min and
-    * f_min; also wind the waveform in phase in case it would wrap-
-    * around at the merger time */
-
-    double tchirp, tmerge, textra, tshift;
-    double fstart, fisco;
-    double s;
-    int32_t k, k0, k1;
-
-    /* if the requested low frequency is below the lowest Kerr ISCO
-    * frequency then change it to that frequency */
-    fisco = 1.0 / (pow(9.0, 1.5) * LAL_PI * (m1 + m2) * LAL_MTSUN_SI / LAL_MSUN_SI);
-    if (f_min > fisco)
-     f_min = fisco;
-
-    /* upper bound on the chirp time starting at f_min */
-    tchirp = XLALSimInspiralChirpTimeBound(f_min, m1, m2, S1z, S2z);
-
-    /* IMR model: estimate plunge and merger time */
-    /* sometimes these waveforms have phases that
-    * cause them to wrap-around an amount equal to
-    * the merger-ringodwn time, so we will undo
-    * that here */
-    s = XLALSimInspiralFinalBlackHoleSpinBound(S1z, S2z);
-    tmerge = XLALSimInspiralMergeTimeBound(m1, m2) + XLALSimInspiralRingdownTimeBound(m1 + m2, s);
-
-    /* new lower frequency to start the waveform: add some extra early
-    * part over which tapers may be applied, the extra amount being
-    * a fixed fraction of the chirp time; add some additional padding
-    * equal to a few extra cycles at the low frequency as well for
-    * safety and for other routines to use */
-    textra = EXTRA_CYCLES / f_min;
-    fstart = XLALSimInspiralChirpStartFrequencyBound((1.0 + EXTRA_TIME_FRACTION) * tchirp, m1, m2);
-
-    /* revise (over-)estimate of chirp from new start frequency */
-    tchirp = XLALSimInspiralChirpTimeBound(fstart, m1, m2, S1z, S2z);
-
-    /* need a long enough segment to hold a whole chirp with some padding */
-    /* length of the chirp in samples */
-    chirplen = round((tchirp + tmerge + 2.0 * textra) / deltaT);
-    /* make chirplen next power of two */
-    frexp(chirplen, &chirplen_exp);
-    chirplen = ldexp(1.0, chirplen_exp);
-    /* frequency resolution */
-    if (deltaF == 0.0)
-     deltaF = 1.0 / (chirplen * deltaT);
-    else if (deltaF > 1.0 / (chirplen * deltaT))
-     XLAL_PRINT_WARNING("Specified frequency interval of %g Hz is too large for a chirp of duration %g s", deltaF, chirplen * deltaT);
-    
-    /* generate the waveform in the frequency domain starting at fstart */
-    cuInspiralChooseFDWaveform(hptilde, hctilde, m1, m2, S1x, S1y, S1z, S2x, S2y, S2z, distance, inclination, phiRef, longAscNodes, deltaF, fstart, f_max, f_ref, LALparams, approximant);
-    
-    //if (retval < 0)
-     //XLAL_ERROR(XLAL_EFUNC);
-
-    /* taper frequencies between fstart and f_min */
-    k0 = (int32_t) round(fstart / (*hptilde)->deltaF);
-    k1 = (int32_t) round(f_min / (*hptilde)->deltaF);
-    /* make sure it is zero below fstart */
-    for (k = 0; k < k0; ++k) {
-     (*hptilde)->data->data[k] = 0.0;
-     (*hctilde)->data->data[k] = 0.0;
+    if (system_properties.ascending_node_longitude > 0.0f) 
+    {   
+        applyPolarization(
+            waveform_axes,
+            system_properties.ascending_node_longitude
+        );
     }
-    /* taper between fstart and f_min */
-    for ( ; k < k1; ++k) {
-     double w = 0.5 - 0.5 * cos(M_PI * (k - k0) / (double)(k1 - k0));
-     (*hptilde)->data->data[k] *= w;
-     (*hctilde)->data->data[k] *= w;
-    }
-    /* make sure Nyquist frequency is zero */
-    (*hptilde)->data->data[(*hptilde)->data->length - 1] = 0.0;
-    (*hctilde)->data->data[(*hctilde)->data->length - 1] = 0.0;
+        
+    taperWaveform(
+        waveform_axes,
+        new_starting_frequency.hertz,
+        old_starting_frequency.hertz,
+        frequency_interval.hertz
+    );
+    
+    // Integer number of time samples:
+    const float num_samples_time_shift =
+          roundf(merge_time_upper_bound.seconds / sampling_interval.seconds) 
+        * sampling_interval.seconds; 
+    
+    // We want to make sure that this waveform will give something
+    // sensible if it is later transformed into the time domain:
+    // to avoid the end of the waveform wrapping around to the beginning,
+    // we shift waveform backwards in time and compensate for this
+    // shift by adjusting the epoch:
+    performTimeShift(
+          waveform_axes,
+          num_samples_time_shift
+    );
 
-    /* we want to make sure that this waveform will give something
-    * sensible if it is later transformed into the time domain:
-    * to avoid the end of the waveform wrapping around to the beginning,
-    * we shift waveform backwards in time and compensate for this
-    * shift by adjusting the epoch */
-    tshift = round(tmerge / deltaT) * deltaT; /* integer number of time samples */
-    for (k = 0; k < (int32_t)(*hptilde)->data->length; ++k) {
-     double complex phasefac = cexp(2.0 * M_PI * I * k * deltaF * tshift);
-     (*hptilde)->data->data[k] *= phasefac;
-     (*hctilde)->data->data[k] *= phasefac;
-    }
     //XLALGPSAdd(&(*hptilde)->epoch, tshift);
     //XLALGPSAdd(&(*hctilde)->epoch, tshift);
 
-    return 0;
+    return waveform_axes;
 }
 
 int cuInspiralTDFromFD(
@@ -805,48 +691,44 @@ int cuInspiralTDFromFD(
      Approximant approximant                     /**< post-Newtonian approximant to use for waveform production */
 ) {
     
-    COMPLEX16FrequencySeries *hptilde = NULL;
-    COMPLEX16FrequencySeries *hctilde = NULL;
         
     // Generate the conditioned waveform in the frequency domain note: redshift 
     // factor has already been applied above set deltaF = 0 to get a small
     // enough resolution:
-    
-   // printf("Cuda 3 | fstart: %f, f_ref %f, deltaT %f | \n", 
-   //  temporal_properties.starting_frequency.hertz, 
-   //  temporal_properties.reference_frequency.hertz, 
-   //  temporal_properties.sampling_interval.seconds);
-    int32_t return_value = 
+    complex_waveform_axes_s waveform_axes = 
         cuInspiralFD(
-            &hptilde, 
-            &hctilde, 
-            system_properties.companion[0],
-            system_properties.companion[1],
-            system_properties.distance.meters,
-            system_properties.inclination.radians, 
-            system_properties.reference_orbital_phase.radians, 
-            system_properties.ascending_node_longitude,
-            0.0, 
-            temporal_properties.starting_frequency.hertz, 
-            temporal_properties.ending_frequency.hertz, 
-            temporal_properties.reference_frequency.hertz,
-            LALparams,
+            system_properties,
+            initFrequencyHertz(0.0f), 
+            temporal_properties.starting_frequency, 
+            temporal_properties.ending_frequency, 
+            temporal_properties.reference_frequency,
             approximant
         );
     
-    // we want to make sure that this waveform will give something
+    float num_samples_time_shift = 
+        roundf(temporal_properties.extra_time.seconds/temporal_properties.sampling_interval.seconds) 
+        * temporal_properties.sampling_interval.seconds; // integer number of samples 
+    
+    // We want to make sure that this waveform will give something
     // sensible if it is later transformed into the time domain:
     // to avoid the end of the waveform wrapping around to the beginning,
     // we shift waveform backwards in time and compensate for this
-    // shift by adjusting the epoch -- note that XLALSimInspiralFD
-    // guarantees that there is extra padding to do this 
-     double tshift = round(temporal_properties.extra_time.seconds / temporal_properties.sampling_interval.seconds) * temporal_properties.sampling_interval.seconds; // integer number of samples 
-     for (size_t k = 0; k < hptilde->data->length; ++k) 
-     {
-         double complex phasefac = cexp(2.0 * M_PI * I * k * hptilde->deltaF * tshift);
-         hptilde->data->data[k] *= phasefac;
-         hctilde->data->data[k] *= phasefac;
-     }
+    // shift by adjusting the epoch:
+    performTimeShift(
+          waveform_axes,
+          num_samples_time_shift
+    );
+    
+    COMPLEX16FrequencySeries *hptilde = NULL;
+    COMPLEX16FrequencySeries *hctilde = NULL;
+    
+    _convertWaveformAxesToLAL_temp(
+        waveform_axes,
+        &hptilde,     //< FD plus polarization 
+        &hctilde     //< FD cross polarization 
+    );
+    
+    double tshift;
 
     //XLALGPSAdd(&hptilde->epoch, tshift);
     //XLALGPSAdd(&hctilde->epoch, tshift);
@@ -950,7 +832,7 @@ int cuInspiralTDFromFD(
     //XLALDestroyCOMPLEX16FrequencySeries(hptilde);
     //XLALDestroyCOMPLEX16FrequencySeries(hctilde);
      
-    return return_value;
+    return 0;
 }
 
 void polarisationRotation(
@@ -1210,7 +1092,7 @@ void generatePhenomCUDA(
     };
     
     angularUnit_t   reference_orbital_phase  = initAngleRadians(0.0);
-    double          ascending_node_longitude = 0.0;
+    double          ascending_node_longitude = 100.0;
     double          eccentricity             = 0.0;
     double          mean_periastron_anomaly  = 0.0;
     timeUnit_t      sampling_interval        = 

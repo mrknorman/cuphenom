@@ -38,7 +38,7 @@ typedef struct {
      
 } temporal_properties_s;
 
-__global__ void performTimeShift(
+__global__ void _performTimeShift_old(
               cuFloatComplex   *h_plus_frequency, 
               cuFloatComplex   *h_cross_frequency, 
         const frequencyUnit_t   frequency_interval, 
@@ -76,31 +76,83 @@ __global__ void performTimeShift(
     }
 }
 
-extern "C" void performTimeShiftHost(
-          cuFloatComplex        *h_plus_frequency, 
-          cuFloatComplex        *h_cross_frequency, 
-    const temporal_properties_s  temporal_properties,
-    const int32_t                num_waveform_samples,
-    const frequencyUnit_t        frequency_interval
+extern "C" void performTimeShiftHost_old(
+          cuFloatComplex  *h_plus_frequency, 
+          cuFloatComplex  *h_cross_frequency, 
+    const float            num_samples_time_shift,
+    const int32_t          num_waveform_samples,
+    const frequencyUnit_t  frequency_interval
     ) {
-        
-    const float num_samples_time_shift = 
-          round(temporal_properties.extra_time.seconds / 
-          temporal_properties.sampling_interval.seconds) 
-        * temporal_properties.sampling_interval.seconds;
     
     const int32_t num_frequency_samples = num_waveform_samples/2 + 1;
     
     const int32_t grid_size = 
         ((num_frequency_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
-    performTimeShift<<<grid_size,BLOCK_SIZE>>>(
+    _performTimeShift_old<<<grid_size,BLOCK_SIZE>>>(
         h_plus_frequency, 
         h_cross_frequency, 
         frequency_interval, 
         num_samples_time_shift,
         num_frequency_samples
     );
+}
+
+__global__ void _performTimeShift(
+              complex_waveform_axes_s waveform_axes, 
+        const float                   num_samples_time_shift
+    ) {
+    
+    /**
+     * Perform hetrodyne shift.
+     * @param 
+     * @see 
+     * @return void
+     */
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // If not outside array bounds, add value toa array element:
+    if (sample_index < waveform_axes.strain.num_samples) 
+	{    
+        cuFloatComplex shift_c  = (cuFloatComplex) {
+            0.0f,
+            2.0f * (float) M_PI * (float) sample_index 
+                 * waveform_axes.frequency.interval.hertz*num_samples_time_shift
+        };
+		
+        cuFloatComplex h_plus = 
+            cuCmulf(
+                waveform_axes.strain.values[sample_index].plus,
+                cudaCExpf(shift_c)
+            );
+            
+        cuFloatComplex h_cross = 
+            cuCmulf(
+                waveform_axes.strain.values[sample_index].cross, 
+                cudaCExpf(shift_c)
+            );
+
+        waveform_axes.strain.values[sample_index].plus  = h_plus;
+        waveform_axes.strain.values[sample_index].cross = h_cross;
+    }
+}
+
+extern "C" int32_t performTimeShift(
+          complex_waveform_axes_s waveform_axes,
+    const float                   num_samples_time_shift
+    ) {
+        
+    const int32_t grid_size = 
+        ((waveform_axes.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    _performTimeShift<<<grid_size,BLOCK_SIZE>>>(
+        waveform_axes,
+        num_samples_time_shift
+    );
+    
+    return 0;
 }
 
 __global__ void initFrequencyArray(
@@ -583,12 +635,10 @@ __global__ void sumFrequenciesPhenom(
     //@return void
     //
     
-    
     // Assign unique thread index for GPU calculation:
     const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
     
-    
-    // If not outside array bounds, add value toa array element:
+    // If not outside array bounds sum pheom frequencies:
     if (sample_index < waveform_axes.frequency.num_samples) 
 	{    
         // Shift index for frequency series if needed:
@@ -639,7 +689,8 @@ __global__ void sumFrequenciesPhenom(
         // Calculate strain at current sample_index:
         waveform_axes.strain.values[offset_index].plus = 
             cuCmulf(amplitude_c,cudaCExpf(phase_c));
-            
+    
+        // Calcualte plus and cross polarizations:
         waveform_axes.strain.values[offset_index].cross = 
             cuCmulf(
                 waveform_axes.strain.values[offset_index].plus, 
@@ -653,7 +704,6 @@ __global__ void sumFrequenciesPhenom(
             );
     }    
 }
-
 
 extern "C" int32_t sumPhenomDFrequencies(
           complex_waveform_axes_s         waveform_axes,
@@ -694,5 +744,139 @@ extern "C" int32_t sumPhenomDFrequencies(
     
     return 0;
 }
+
+__global__ void _applyPolarization(
+    const complex_waveform_axes_s waveform_axes,
+    const cuFloatComplex          cos_coefficient,
+    const cuFloatComplex          sin_coefficient
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (index < waveform_axes.strain.num_samples) 
+	{
+        const cuFloatComplex original_plus = 
+            waveform_axes.strain.values[index].plus;
+        const cuFloatComplex original_cross = 
+            waveform_axes.strain.values[index].cross;
+            
+        waveform_axes.strain.values[index].plus =
+            cuCaddf(
+              cuCmulf(cos_coefficient, original_plus),
+              cuCmulf(sin_coefficient, original_cross)
+            );
+        
+        waveform_axes.strain.values[index].cross = 
+            cuCsubf(
+              cuCmulf(cos_coefficient, original_cross),
+              cuCmulf(sin_coefficient, original_plus)
+            );
+    }
+}
+
+extern "C" int32_t applyPolarization(
+    const complex_waveform_axes_s waveform_axes,
+    const float                   polarization
+    ) {
+    
+    const int32_t grid_size = 
+        ((waveform_axes.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    const cuFloatComplex cos_coefficient = 
+         (cuFloatComplex) {cosf(2.0f*polarization), 0.0f};
+    const cuFloatComplex sin_coefficient = 
+         (cuFloatComplex) {sinf(2.0f*polarization), 0.0f};
+    
+    _applyPolarization<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes,
+        cos_coefficient,
+        sin_coefficient
+    );
+
+    return 0;
+}
+
+__global__ void _taperWaveform(
+    const complex_waveform_axes_s waveform_axes,
+    const int32_t                 start_index,
+    const int32_t                 end_index
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (index < start_index) 
+	{
+        // Ensure strain is zero below start_frequency:
+        const cuFloatComplex complex_zero =
+            (cuFloatComplex) {0.0f, 0.0f};
+        
+        waveform_axes.strain.values[index].plus  = complex_zero;
+        waveform_axes.strain.values[index].cross = complex_zero;
+    }
+    else if (index < end_index)
+    {
+        // Taper waveform between start_frequency and minimum_frequency:
+        const float taper_scalar = 
+              0.5f 
+            - 0.5f*cosf(
+                (float)M_PI
+                *(float)(index - start_index) 
+                /(float)(end_index - start_index)
+            );
+            
+        const cuFloatComplex complex_scalar = 
+            (cuFloatComplex) {taper_scalar, 0.0f};
+
+        waveform_axes.strain.values[index].plus = 
+            cuCmulf(waveform_axes.strain.values[index].plus, complex_scalar);
+        waveform_axes.strain.values[index].cross = 
+            cuCmulf(waveform_axes.strain.values[index].cross, complex_scalar);
+    }
+}
+
+__global__ void _zeroNyquistFrequency(
+    const complex_waveform_axes_s waveform_axes
+    ) {
+    
+    // Make sure Nyquist frequency is zero:
+    waveform_axes.strain.values[waveform_axes.strain.num_samples - 1].plus  = 
+        (cuFloatComplex) {0.0f, 0.0f};
+    waveform_axes.strain.values[waveform_axes.strain.num_samples - 1].cross =
+        (cuFloatComplex) {0.0f, 0.0f};
+}
+
+extern "C" int32_t taperWaveform(
+    const complex_waveform_axes_s waveform_axes,
+    const float                   starting_frequency,
+    const float                   minimum_frequency,
+    const float                   frequency_interval
+    ) {
+    
+    //
+    // Taper frequencies between starting_frequency and minimum_frequency 
+    //
+        
+    // Calculate sample indicies of start and minimum frequencies:
+    const int32_t start_index = 
+        (int32_t)roundf(starting_frequency/frequency_interval);
+    const int32_t end_index = 
+        (int32_t)roundf(minimum_frequency/frequency_interval);
+    
+    // Perform tapering on device:
+    const int32_t grid_size = 
+        ((end_index + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    _taperWaveform<<<grid_size, BLOCK_SIZE>>>
+        (waveform_axes, start_index, end_index);
+        
+    _zeroNyquistFrequency<<<1, 1>>>(
+        waveform_axes
+    );
+    
+    return 0;
+}
+
+
 
 #endif

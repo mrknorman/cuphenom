@@ -34,6 +34,18 @@ int32_t sumPhenomDFrequencies(
     const float                            phi_precalc
     );
 
+int32_t applyPolarization(
+    const complex_waveform_axes_s waveform_axes,
+    const float                   polarization
+    );
+
+int32_t taperWaveform(
+    const complex_waveform_axes_s waveform_axes,
+    const float                   starting_frequency,
+    const float                   minimum_frequency,
+    const float                   frequency_interval
+    );
+
 static void checkSystemParameters(
     const system_properties_s system_properties
     ) {
@@ -263,13 +275,18 @@ typedef struct {
      
 } temporal_properties_s;
 
-void performTimeShiftHost(
-          complex float        *h_plus_frequency, 
-          complex float        *h_cross_frequency, 
-    const temporal_properties_s temporal_properties,
-    const int32_t               num_waveform_samples,
-    const frequencyUnit_t       frequency_interval
+void performTimeShiftHost_old(
+          complex float   *h_plus_frequency, 
+          complex float   *h_cross_frequency, 
+    const float            temporal_properties,
+    const int32_t          num_waveform_samples,
+    const frequencyUnit_t  frequency_interval
 );
+
+int32_t performTimeShift(
+          complex_waveform_axes_s waveform_axes,
+    const float                   num_samples_time_shift
+    );
 
 inline float TaylorT2Timing_0PNCoeff(
     const massUnit_t total_mass,
@@ -504,6 +521,16 @@ static void checkFreqeuncyParameters(
     }
 }
 
+
+inline frequencyUnit_t calculateKerrISCOFrequency(
+    system_properties_s system_properties
+    ) {
+    
+    return initFrequencyHertz(
+        1.0f / (powf(9.0f, 1.5f)*(float)M_PI*system_properties.total_mass.seconds)
+    );
+}
+
 temporal_properties_s initTemporalProperties(
           timeUnit_t          sampling_interval,   // <-- Sampling interval (timeUnit_t).
           frequencyUnit_t     starting_frequency,  // <-- Starting GW frequency (frequencyUnit_t).
@@ -538,9 +565,7 @@ temporal_properties_s initTemporalProperties(
     // If the requested low frequency is below the lowest Kerr ISCO
     // frequency then change it to that frequency:
     const frequencyUnit_t kerr_isco_frequency = 
-        initFrequencyHertz(
-            1.0f / (powf(9.0f, 1.5f)*(float)M_PI*system_properties.total_mass.seconds)
-        );
+        calculateKerrISCOFrequency(system_properties);
     
     if (starting_frequency.hertz > kerr_isco_frequency.hertz)
          temporal_properties.starting_frequency = kerr_isco_frequency;
@@ -653,10 +678,15 @@ void performIRFFT(
         (void**) &ifft_g
     );    
     
-    performTimeShiftHost(
+    const float num_samples_time_shift = 
+          roundf(temporal_properties.extra_time.seconds / 
+          temporal_properties.sampling_interval.seconds) 
+        * temporal_properties.sampling_interval.seconds;
+    
+    performTimeShiftHost_old(
           ifft_g, 
           &ifft_g[num_waveform_samples], 
-          temporal_properties,
+          num_samples_time_shift,
           num_waveform_samples,
           frequency_interval
     );

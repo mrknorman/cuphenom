@@ -10,7 +10,7 @@
 #define MPC_METERS PC_METERS * 10E6f
 #define SIDEREAL_YEAR_SECONDS 365.256363004f*24.0f*3600.0f
 
-#define G_SI 6.67408E-11f  //-- the gravitational constant in m^3/(kilogram*s^2)
+#define G_SI 6.67430e-11 //6.67408E-11f  //-- the gravitational constant in m^3/(kilogram*s^2)
 #define MASS_SUN_KILOGRAMS   (4.0f*(float)(M_PI*M_PI)*AU_METERS*AU_METERS*AU_METERS) \
 						   / (G_SI*SIDEREAL_YEAR_SECONDS*SIDEREAL_YEAR_SECONDS)
 

@@ -15,23 +15,24 @@ typedef struct
 {
     cuFloatComplex plus;
     cuFloatComplex cross;
-} complex_strain_element_t;
+} complex_strain_element_c;
 
 typedef struct 
 {
     complex float plus;
     complex float cross;
-} complex_strain_element_c;
+} complex_strain_element_t;
 
 typedef struct
 {
     frequencyUnit_t *values;
+    frequencyUnit_t  interval;
     int32_t          num_samples;
 } frequency_array_s;
 
 typedef struct
 {
-    complex_strain_element_t *values;
+    complex_strain_element_c *values;
     int32_t                   num_samples;
 } complex_strain_array_s;
 
