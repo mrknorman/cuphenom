@@ -34,6 +34,16 @@ int32_t sumPhenomDFrequencies(
     const float                            phi_precalc
     );
 
+waveform_axes_s inclinationAdjust(
+    const system_properties_s system_properties,
+          waveform_axes_s      waveform_axes_td
+    );
+
+waveform_axes_s polarisationRotation(
+    const float           polarization,
+          waveform_axes_s waveform_axes_td
+    );
+
 int32_t applyPolarization(
     const complex_waveform_axes_s waveform_axes,
     const float                   polarization
@@ -245,7 +255,7 @@ system_properties_s initBinarySystem(
 
 typedef struct {
     // Sampling interval (timeUnit_t):
-    timeUnit_t        sampling_interval;  
+    timeUnit_t        time_interval;  
     
     // Starting GW frequency (frequencyUnit_t):
     frequencyUnit_t   starting_frequency;  
@@ -275,17 +285,10 @@ typedef struct {
      
 } temporal_properties_s;
 
-void performTimeShiftHost_old(
-          complex float   *h_plus_frequency, 
-          complex float   *h_cross_frequency, 
-    const float            temporal_properties,
-    const int32_t          num_waveform_samples,
-    const frequencyUnit_t  frequency_interval
-);
 
 int32_t performTimeShift(
           complex_waveform_axes_s waveform_axes,
-    const float                   num_samples_time_shift
+    const timeUnit_t              shift_duration
     );
 
 inline float TaylorT2Timing_0PNCoeff(
@@ -478,26 +481,26 @@ frequencyUnit_t InspiralChirpStartFrequencyBound(
 }
 
 static void checkFreqeuncyParameters(
-    const timeUnit_t      sampling_interval,
+    const timeUnit_t      time_interval,
     const frequencyUnit_t starting_frequency
     ) {
     
-    if (sampling_interval.seconds > 1.0f)
+    if (time_interval.seconds > 1.0f)
     {
         fprintf(
             stderr,
-            "Warning %s \n Large value of sampling_interval = %e (s) requested."
+            "Warning %s \n Large value of time_interval = %e (s) requested."
             "\nPerhaps sample rate and time step size were swapped?\n", 
-            __func__, sampling_interval.seconds
+            __func__, time_interval.seconds
         );
     }
-    if (sampling_interval.seconds < 1.0f/16385.0f)
+    if (time_interval.seconds < 1.0f/16385.0f)
     {
         fprintf(
             stderr,
-            "Warning %s \n Small value of sampling_interval = %e (s) requested."
+            "Warning %s \n Small value of time_interval = %e (s) requested."
             "\nCheck for errors, this could create very large time series.\n", 
-            __func__, sampling_interval.seconds
+            __func__, time_interval.seconds
         );
     }
     if(starting_frequency.hertz < 1.0f)
@@ -532,7 +535,7 @@ inline frequencyUnit_t calculateKerrISCOFrequency(
 }
 
 temporal_properties_s initTemporalProperties(
-          timeUnit_t          sampling_interval,   // <-- Sampling interval (timeUnit_t).
+          timeUnit_t          time_interval,   // <-- Sampling interval (timeUnit_t).
           frequencyUnit_t     starting_frequency,  // <-- Starting GW frequency (frequencyUnit_t).
           frequencyUnit_t     reference_frequency, // <-- Reference GW frequency (frequencyUnit_t).
     const system_properties_s system_properties,
@@ -542,13 +545,13 @@ temporal_properties_s initTemporalProperties(
     // General sanity check the temporal_properties parameters. This will only 
     // give warnings:
     checkFreqeuncyParameters(
-       sampling_interval,
+       time_interval,
        starting_frequency
     );
     
     temporal_properties_s temporal_properties;
     
-    temporal_properties.sampling_interval   = sampling_interval;
+    temporal_properties.time_interval   = time_interval;
     temporal_properties.reference_frequency = reference_frequency;
     
     // Adjust the reference frequency for certain precessing approximants:
@@ -560,7 +563,7 @@ temporal_properties_s initTemporalProperties(
     
     // Calculate ending frequency:
     temporal_properties.ending_frequency = 
-        initFrequencyHertz(0.5f/sampling_interval.seconds);
+        initFrequencyHertz(0.5f/time_interval.seconds);
 
     // If the requested low frequency is below the lowest Kerr ISCO
     // frequency then change it to that frequency:
@@ -623,155 +626,28 @@ temporal_properties_s initTemporalProperties(
     return temporal_properties;
 }
 
-void castComplex64to32(
-    const complex double  *in, 
-          complex float   *out,  
-    const         int32_t  num_elements
-) {
-    for(int32_t index = 0; index < num_elements; index++)
-    {
-        out[index] = (complex float) {creal(in[index]), cimag(in[index])};
-    }
-}
-
-void cast32to64(float *in, double *out, int32_t n){
-    for(int32_t i = 0; i< n; i++)
-    {
-        out[i] = ((double) in[i]);
-    }
-}
-
-void performIRFFT(
-          complex double                *hptilde,
-          complex double                *hctilde,
-                  double                *hplus,
-                  double                *hcross,
-                  temporal_properties_s  temporal_properties,
-    const         frequencyUnit_t        frequency_interval,
-    const         int32_t                num_waveform_samples
+waveform_axes_s convertWaveformFDToTD(
+    const complex_waveform_axes_s waveform_axes_fd
     ) {
     
-    complex float  *float_array  = 
-        (complex float*)malloc(
-            sizeof(complex float)*(size_t)(num_waveform_samples*2)
-        );    
+    const int32_t num_td_samples = 
+        2 * (waveform_axes_fd.strain.num_samples - 1);
+        
+    waveform_axes_s waveform_axes_td;
+    waveform_axes_td.time.interval = waveform_axes_fd.time.interval;
+    waveform_axes_td.strain.num_samples = num_td_samples;
+    waveform_axes_td.strain.values = NULL;
     
-    const int32_t num_frequency_bins = 
-        (int32_t)round(num_waveform_samples/2) + 1; 
-    castComplex64to32(
-        hptilde,
-        float_array, 
-        num_frequency_bins
+    cudaInterlacedIRFFT(
+        num_td_samples,
+	    num_td_samples * waveform_axes_fd.time.interval.seconds,
+        (cuFloatComplex*) waveform_axes_fd.strain.values,
+        (float*) &waveform_axes_td.strain.values
     );
     
-    castComplex64to32(
-        hctilde,
-        &float_array[num_waveform_samples], 
-        num_frequency_bins
-    );
-
-    complex float *ifft_g = NULL;
-    cudaToDevice(
-        (void*) float_array, 
-        sizeof(complex float),
-        num_waveform_samples*2,
-        (void**) &ifft_g
-    );    
+    cudaFree(waveform_axes_fd.strain.values);
     
-    const float num_samples_time_shift = 
-          roundf(temporal_properties.extra_time.seconds / 
-          temporal_properties.sampling_interval.seconds) 
-        * temporal_properties.sampling_interval.seconds;
-    
-    performTimeShiftHost_old(
-          ifft_g, 
-          &ifft_g[num_waveform_samples], 
-          num_samples_time_shift,
-          num_waveform_samples,
-          frequency_interval
-    );
-    
-    cudaIRfft(
-        num_waveform_samples,
-        2,
-        (double) 
-        ((float)num_waveform_samples * temporal_properties.sampling_interval.seconds) * 0.5, // I don't know where this factor of 0.5 comes from slightly concerning
-        (cuFloatComplex*)ifft_g
-    );
-    
-    float *ifft = NULL;
-    cudaToHost(
-        (void**)ifft_g, 
-        sizeof(float),
-        num_waveform_samples*3,
-        (void**) &ifft
-    );
-    cast32to64(
-        ifft, 
-        hplus,
-        num_waveform_samples
-    );
-    cast32to64(
-        &ifft[2*num_waveform_samples], 
-        hcross,
-        num_waveform_samples
-    );
-    free(ifft);
-    cudaFree(ifft_g);
-}
-
-void performIRFFT64(
-    const complex double     *hptilde,
-    const complex double     *hctilde,
-                  double     *hplus,
-                  double     *hcross,
-                  timeUnit_t  sampling_interval,
-    const         int32_t     num_waveform_samples
-    ) 
-    
-    {
-    complex double *float_array = 
-        (complex double*)malloc(
-            sizeof(complex double)*(size_t)(num_waveform_samples*2)
-        );    
-    
-    for (int32_t index = 0; index < (num_waveform_samples/2 + 1); index++)
-    {
-        float_array[index]                        = hptilde[index];
-        float_array[index + num_waveform_samples] = hctilde[index];
-    }
-    
-    complex double *ifft_g = NULL;
-    cudaToDevice(
-        (void*) float_array, 
-        sizeof(complex double),
-        num_waveform_samples*2,
-        (void**) &ifft_g
-    );    
-    
-    cudaIRfft64(
-        num_waveform_samples,
-        2,
-        (double)num_waveform_samples * sampling_interval.seconds,
-        (cuDoubleComplex*)ifft_g
-    );
-    
-    double *ifft = NULL;
-    cudaToHost(
-        (void**)ifft_g, 
-        sizeof(double),
-        num_waveform_samples*3,
-        (void**) &ifft
-    );
-    
-    for (int32_t index = 0; index < num_waveform_samples; index++)
-    {
-        hplus[index]  = ifft[index];
-        hcross[index] = ifft[index + 2*num_waveform_samples];
-    }
-    
-    free(ifft);
-    cudaFree(ifft_g);
+    return waveform_axes_td;
 }
 
 // The phasing function for TaylorF2 frequency-domain waveform.

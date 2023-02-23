@@ -23,6 +23,12 @@ typedef struct
     complex float cross;
 } complex_strain_element_t;
 
+typedef struct 
+{
+    float plus;
+    float cross;
+} strain_element_t;
+
 typedef struct
 {
     frequencyUnit_t *values;
@@ -32,15 +38,35 @@ typedef struct
 
 typedef struct
 {
+    timeUnit_t *values;
+    timeUnit_t  interval;
+    int32_t     num_samples;
+} time_array_s;
+
+typedef struct
+{
     complex_strain_element_c *values;
     int32_t                   num_samples;
 } complex_strain_array_s;
 
 typedef struct
 {
+    strain_element_t *values;
+    int32_t           num_samples;
+} strain_array_s;
+
+typedef struct
+{
     frequency_array_s      frequency;
+    time_array_s           time;
     complex_strain_array_s strain;
 } complex_waveform_axes_s;
+
+typedef struct
+{
+    time_array_s   time;
+    strain_array_s strain;
+} waveform_axes_s;
 
 // Vector of dimensionless spins {x,y,z}:
 typedef struct 

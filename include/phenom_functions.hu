@@ -38,66 +38,6 @@ typedef struct {
      
 } temporal_properties_s;
 
-__global__ void _performTimeShift_old(
-              cuFloatComplex   *h_plus_frequency, 
-              cuFloatComplex   *h_cross_frequency, 
-        const frequencyUnit_t   frequency_interval, 
-        const float             num_samples_time_shift,
-        const int32_t           num_frequency_samples
-    ) {
-    
-    /**
-     * Perform hetrodyne shift.
-     * @param 
-     * @see 
-     * @return void
-     */
-    
-    // Assign unique thread index for GPU calculation:
-    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // If not outside array bounds, add value toa array element:
-    if (sample_index < num_frequency_samples) 
-	{    
-        cuFloatComplex shift_c  = (cuFloatComplex) {
-            0.0f,
-            2.0f * (float) M_PI * (float) sample_index 
-                 * frequency_interval.hertz * num_samples_time_shift
-        };
-		
-        cuFloatComplex h_plus = 
-            cuCmulf(h_plus_frequency[sample_index], cudaCExpf(shift_c));
-            
-        cuFloatComplex h_cross = 
-            cuCmulf(h_cross_frequency[sample_index], cudaCExpf(shift_c));
-
-        h_plus_frequency [sample_index] = h_plus;
-        h_cross_frequency[sample_index] = h_cross;
-    }
-}
-
-extern "C" void performTimeShiftHost_old(
-          cuFloatComplex  *h_plus_frequency, 
-          cuFloatComplex  *h_cross_frequency, 
-    const float            num_samples_time_shift,
-    const int32_t          num_waveform_samples,
-    const frequencyUnit_t  frequency_interval
-    ) {
-    
-    const int32_t num_frequency_samples = num_waveform_samples/2 + 1;
-    
-    const int32_t grid_size = 
-        ((num_frequency_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    
-    _performTimeShift_old<<<grid_size,BLOCK_SIZE>>>(
-        h_plus_frequency, 
-        h_cross_frequency, 
-        frequency_interval, 
-        num_samples_time_shift,
-        num_frequency_samples
-    );
-}
-
 __global__ void _performTimeShift(
               complex_waveform_axes_s waveform_axes, 
         const float                   num_samples_time_shift
@@ -140,17 +80,27 @@ __global__ void _performTimeShift(
 }
 
 extern "C" int32_t performTimeShift(
-          complex_waveform_axes_s waveform_axes,
-    const float                   num_samples_time_shift
+          complex_waveform_axes_s waveform_axes_fd,
+    const timeUnit_t              shift_duration
     ) {
-        
+    
+    // Integer number of samples:
+    const float num_samples_time_shift = 
+        roundf(
+              shift_duration.seconds
+            / waveform_axes_fd.time.interval.seconds
+        )*waveform_axes_fd.time.interval.seconds; 
+    
     const int32_t grid_size = 
-        ((waveform_axes.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        ((waveform_axes_fd.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
     _performTimeShift<<<grid_size,BLOCK_SIZE>>>(
-        waveform_axes,
+        waveform_axes_fd,
         num_samples_time_shift
     );
+    
+    //XLALGPSAdd(&(*hptilde)->epoch, tshift);
+    //XLALGPSAdd(&(*hctilde)->epoch, tshift);
     
     return 0;
 }
@@ -248,13 +198,20 @@ extern "C" complex_waveform_axes_s generatePhenomD(
         frequency_interval
     );
     
-    complex_waveform_axes_s complex_waveform_axes = 
+    time_array_s time_array = 
+    {
+        .values      = NULL,
+        .interval    = initTimeSeconds(0.0f),
+        .num_samples = 0
+    };
+    complex_waveform_axes_s waveform_axes_fd = 
     {
         .frequency = frequency_array,
+        .time      = time_array,
         .strain    = complex_strain_array
     };
     
-    return complex_waveform_axes;
+    return waveform_axes_fd;
 }
 
 __device__ __forceinline__ useful_powers_s _initUsefulPowers(
@@ -612,8 +569,114 @@ __global__ void sumFrequenciesPhenomTidal(
     }    
 }
 
-__global__ void sumFrequenciesPhenom(
-          complex_waveform_axes_s         waveform_axes,
+__global__ void _inclinationAdjust(
+          strain_array_s strain,
+    const float          cross_factor,
+    const float          plus_factor
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // If not outside array bounds, add value toa array element:
+    if (sample_index < strain.num_samples) 
+	{    
+        strain.values[sample_index].plus  *= plus_factor;
+        strain.values[sample_index].cross *= cross_factor;
+    }    
+}
+
+extern "C" waveform_axes_s inclinationAdjust(
+    const system_properties_s system_properties,
+          waveform_axes_s     waveform_axes_td
+    ) {
+    
+    float   max_amplitude = 0.0f;
+    int32_t max_index     = waveform_axes_td.strain.num_samples - 1;
+    
+    /*
+    for (int32_t index = max_index - 1; index > -1; index--)
+    {    
+        const float amplitude_squared = 
+              waveform_axes_td.strain.values[index].plus *waveform_axes_td.strain.values[index].plus 
+            + waveform_axes_td.strain.values[index].cross*waveform_axes_td.strain.values[index].cross;
+                
+        if (amplitude_squared > max_amplitude)
+        {
+            max_index     = index;
+            max_amplitude = amplitude_squared;
+        }
+    }
+    
+    //XLALGPSSetREAL8(&(hp->epoch), -1.0*temporal_properties.time_interval.seconds * max_index);
+    //XLALGPSSetREAL8(&(hc->epoch), -1.0*temporal_properties.time_interval.seconds * max_index);    
+    
+    */
+    
+    const float cross_factor = cosf(system_properties.inclination.radians);
+    const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
+    
+    const int32_t grid_size = 
+        ((waveform_axes_td.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+     _inclinationAdjust<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes_td.strain,
+        cross_factor,
+        plus_factor
+    );
+    
+    return waveform_axes_td;
+}
+
+
+__global__ void _polarisationRotation(
+          strain_array_s strain,
+    const float          cos_polarization,
+    const float          sin_polarization
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (sample_index < strain.num_samples) 
+    {
+        const float temp_plus = strain.values[sample_index].plus;
+        strain.values[sample_index].plus = 
+            (cos_polarization*strain.values[sample_index].plus)
+            + (sin_polarization*strain.values[sample_index].cross);
+
+        strain.values[sample_index].cross = 
+            (cos_polarization*strain.values[sample_index].cross) 
+            - (sin_polarization*temp_plus);
+    }  
+}
+
+extern "C" waveform_axes_s polarisationRotation(
+    const float           polarization,
+          waveform_axes_s waveform_axes_td
+    ) {
+    
+    //R.C.: here's the reference explaining why we perform this rotation https://dcc.ligo.org/LIGO-G1900275
+    if (polarization != 0.0f) 
+    {        
+        const float cos_polarization = cosf(2.0f*polarization);
+        const float sin_polarization = sinf(2.0f*polarization);
+        
+        const int32_t grid_size = 
+            ((waveform_axes_td.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        
+        _polarisationRotation<<<grid_size, BLOCK_SIZE>>>(
+            waveform_axes_td.strain,
+            cos_polarization,
+            sin_polarization
+        );
+    }
+    
+    return waveform_axes_td;
+}
+
+__global__ void _sumPhenomDFrequencies(
+          complex_waveform_axes_s         waveform_axes_fd,
     const float                           plus_factor,
     const float                           cross_factor,
     const float                           total_mass_seconds,
@@ -639,7 +702,7 @@ __global__ void sumFrequenciesPhenom(
     const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
     
     // If not outside array bounds sum pheom frequencies:
-    if (sample_index < waveform_axes.frequency.num_samples) 
+    if (sample_index < waveform_axes_fd.frequency.num_samples) 
 	{    
         // Shift index for frequency series if needed:
         const int32_t offset_index = sample_index + offset; 
@@ -648,7 +711,7 @@ __global__ void sumFrequenciesPhenom(
         const useful_powers_s mass_frequency = 
             _initUsefulPowers(
                 total_mass_seconds*
-                    waveform_axes.frequency.values[sample_index].hertz
+                    waveform_axes_fd.frequency.values[sample_index].hertz
             );    
 
         // Calculate amplitude value at current sample index:
@@ -687,26 +750,26 @@ __global__ void sumFrequenciesPhenom(
             };
         
         // Calculate strain at current sample_index:
-        waveform_axes.strain.values[offset_index].plus = 
+        waveform_axes_fd.strain.values[offset_index].plus = 
             cuCmulf(amplitude_c,cudaCExpf(phase_c));
     
         // Calcualte plus and cross polarizations:
-        waveform_axes.strain.values[offset_index].cross = 
+        waveform_axes_fd.strain.values[offset_index].cross = 
             cuCmulf(
-                waveform_axes.strain.values[offset_index].plus, 
+                waveform_axes_fd.strain.values[offset_index].plus, 
                 (cuFloatComplex) {0.0f, -1*cross_factor}
             );
             
-        waveform_axes.strain.values[offset_index].plus =
+        waveform_axes_fd.strain.values[offset_index].plus =
             cuCmulf(
-                waveform_axes.strain.values[offset_index].plus,
+                waveform_axes_fd.strain.values[offset_index].plus,
                 (cuFloatComplex) {plus_factor, 0.0}
             );
     }    
 }
 
 extern "C" int32_t sumPhenomDFrequencies(
-          complex_waveform_axes_s         waveform_axes,
+          complex_waveform_axes_s         waveform_axes_fd,
     const float                           inclination,
     const float                           total_mass_seconds,
     const amplitude_coefficients_s        amplitude_coefficients,
@@ -721,13 +784,13 @@ extern "C" int32_t sumPhenomDFrequencies(
     ) {
     
     const int32_t grid_size = 
-        ((waveform_axes.frequency.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        ((waveform_axes_fd.frequency.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
         
     const float cross_factor = cosf(inclination);
     const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
     
-    sumFrequenciesPhenom<<<grid_size, BLOCK_SIZE>>>(
-        waveform_axes,
+    _sumPhenomDFrequencies<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes_fd,
         plus_factor,
         cross_factor,
         total_mass_seconds,
@@ -876,7 +939,5 @@ extern "C" int32_t taperWaveform(
     
     return 0;
 }
-
-
 
 #endif
