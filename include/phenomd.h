@@ -1,7 +1,6 @@
 #include "phenomd_data.h"
 #include "phenomd_structures.h"
 
-
 inline float Square(
     const float number
 ) {
@@ -262,7 +261,7 @@ inline float calculateMergerRingdownAmplitudeAnsatz(
  
 // Ansatz for the intermediate amplitude. Equation 21 arXiv:1508.07253:
 inline float calculateIntermediateAmplitudeAnsatz(
-    const useful_powers_s                 mass_frequency, 
+    const useful_powers_s          mass_frequency, 
     const amplitude_coefficients_s coefficients
     ) {
     

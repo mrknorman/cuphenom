@@ -411,7 +411,7 @@ int32_t testRunTime(
 	for (int32_t index = 0; index < num_tests; index++)
 	{
 		generatePhenomCUDA(
-			approximant,
+			D,
 			mass_1,
 			mass_2, 
 			sample_rate, 
@@ -469,7 +469,7 @@ int32_t main(){
 	);
             
     generatePhenomCUDA(
-		approximant,
+		D,
 		mass_1,
 		mass_2, 
 		sample_rate, 

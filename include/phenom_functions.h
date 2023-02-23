@@ -1,8 +1,6 @@
 #ifndef PHENOM_FUNCTIONS_H
 #define PHENOM_FUNCTIONS_H
 
-#include <lal/LALDict.h>
-#include <lal/LALSimInspiral.h>
 #include <cuda_maths.h>
 
 float calculateSpinNorm(
@@ -355,13 +353,13 @@ float InspiralFinalBlackHoleSpinBound(
 
 temporal_properties_s fixReferenceFrequency(
           temporal_properties_s temporal_properties,
-    const Approximant           approximant
+    const approximant_e         approximant
 ) {
      if (temporal_properties.reference_frequency.hertz == 0.0f)
      {
-        switch (approximant) 
+        switch (approximant)
         {
-            case IMRPhenomXPHM:
+            case XPHM:
                 temporal_properties.reference_frequency = 
                     temporal_properties.starting_frequency;
             default:
@@ -539,7 +537,7 @@ temporal_properties_s initTemporalProperties(
           frequencyUnit_t     starting_frequency,  // <-- Starting GW frequency (frequencyUnit_t).
           frequencyUnit_t     reference_frequency, // <-- Reference GW frequency (frequencyUnit_t).
     const system_properties_s system_properties,
-    const Approximant         approximant
+    const approximant_e       approximant
     ) {
     
     // General sanity check the temporal_properties parameters. This will only 
@@ -829,13 +827,13 @@ inline float TaylorF2Phasing_15PNTidalCoeff(
 }
 
 pn_phasing_series_s PNPhasing_F2(
-    const float   m1, // Masns of body 1, in Msol
-    const float   m2, // Mass of body 2, in Msol
-    const float   chi1L, // Component of dimensionless spin 1 along Lhat
-    const float   chi2L, // Component of dimensionless spin 2 along Lhat
-    const float   lambda1,
-    const float   lambda2,
-    const int32_t tidal_pn_order
+    const float         m1, // Masns of body 1, in Msol
+    const float         m2, // Mass of body 2, in Msol
+    const float         chi1L, // Component of dimensionless spin 1 along Lhat
+    const float         chi2L, // Component of dimensionless spin 2 along Lhat
+    const float         lambda1,
+    const float         lambda2,
+    const tidal_order_e tidal_pn_order
     ) {
     
     const float mtot = m1 + m2;
@@ -864,30 +862,30 @@ pn_phasing_series_s PNPhasing_F2(
                  
     switch(tidal_pn_order)
     {
-        case LAL_SIM_INSPIRAL_TIDAL_ORDER_75PN:
+        case TIDAL_ORDER_75PN:
             pfa.v[15] = lambda1*TaylorF2Phasing_15PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_15PNTidalCoeff(m2M);
-        case LAL_SIM_INSPIRAL_TIDAL_ORDER_DEFAULT:
-        case LAL_SIM_INSPIRAL_TIDAL_ORDER_7PN:
+        case TIDAL_ORDER_ALL:
+        case TIDAL_ORDER_7PN:
             pfa.v[14] = lambda1*TaylorF2Phasing_14PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_14PNTidalCoeff(m2M);
-        case LAL_SIM_INSPIRAL_TIDAL_ORDER_65PN:
+        case TIDAL_ORDER_65PN:
             pfa.v[13] = lambda1*TaylorF2Phasing_13PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_13PNTidalCoeff(m2M);
-        case LAL_SIM_INSPIRAL_TIDAL_ORDER_6PN:
+        case TIDAL_ORDER_6PN:
             pfa.v[12] = lambda1*TaylorF2Phasing_12PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_12PNTidalCoeff(m2M);
-        case LAL_SIM_INSPIRAL_TIDAL_ORDER_5PN:
+        case TIDAL_ORDER_5PN:
             pfa.v[10] = lambda1*TaylorF2Phasing_10PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_10PNTidalCoeff(m2M);
-        case LAL_SIM_INSPIRAL_TIDAL_ORDER_0PN:
+        case TIDAL_ORDER_0PN:
             break;
         default:
-        fprintf(
-            stderr, 
-            "%s:\nWarning! Invalid tidal PN order (%i)\n.",
-            __func__, tidal_pn_order
-        );    
+            fprintf(
+                stderr, 
+                "%s:\nWarning! Invalid tidal PN order (%i)\n.",
+                __func__, tidal_pn_order
+            );    
         break;
     }
     

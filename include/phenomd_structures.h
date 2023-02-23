@@ -9,6 +9,44 @@
 
 #include "phenomd_data.h"
 
+
+// Enums //
+
+// Enum that specifies the PN approximant to be used in computing the waveform.
+
+typedef enum {
+    
+    //Frequency domain (non-precessing spins) inspiral-merger-ringdown templates 
+    // of Husa et al, arXiv:1508.07250 and Khan et al, arXiv:1508.07253 with 
+    // phenomenological coefficients defined in the Table ... 
+    // @remarks Implemented in lalsimulation (frequency domain).
+    D, 
+    // Frequency domain, precessing with subdominant modes phenomenological 
+    // IMR waveform model.
+    XPHM
+} approximant_e;
+
+
+ 
+// Enumeration of allowed PN orders of tidal effects. All effects up to and
+// including the given order will be included in waveforms.
+// Numerically, they are equal to twice the PN order, so e.g.
+// LAL_SIM_INSPIRAL_TIDAL_ORDER_5PN = 10
+// In addition, LAL_SIM_INSPIRAL_TIDAL_ORDER_ALL = -1
+// is a flag to include all tidal PN orders up to the default
+// value (which currently is 7PN for TaylorF2, 6PN for all
+// other approximants):
+typedef enum {
+     TIDAL_ORDER_0PN  =  0,
+     TIDAL_ORDER_5PN  = 10,
+     TIDAL_ORDER_6PN  = 12,
+     TIDAL_ORDER_65PN = 13,
+     TIDAL_ORDER_7PN  = 14,
+     TIDAL_ORDER_75PN = 15,
+     TIDAL_ORDER_ALL  = -1,
+} tidal_order_e;
+
+
 // ~~~~~~~~~~ General structures ~~~~~~~~~~:
 
 typedef struct 

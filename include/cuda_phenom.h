@@ -389,7 +389,7 @@ complex_waveform_axes_s cuInspiralFD(
     frequencyUnit_t old_starting_frequency, // < starting GW frequency (Hz)
     frequencyUnit_t ending_frequency,       // < ending GW frequency (Hz)
     frequencyUnit_t reference_frequency,    // < Reference frequency (Hz)
-    Approximant approximant                 // < post-Newtonian approximant to use for waveform production
+    approximant_e approximant                 // < post-Newtonian approximant to use for waveform production
     ) {  
     
     // Apply condition that ending_frequency rounds to the next power-of-two 
@@ -533,7 +533,7 @@ complex_waveform_axes_s cuInspiralFD(
     complex_waveform_axes_s waveform_axes_fd;
     switch (approximant)
     {
-        case IMRPhenomD:
+        case D:
         // Call the waveform driver routine:
         waveform_axes_fd = 
             cuPhenomDGenerateFD(
@@ -547,7 +547,7 @@ complex_waveform_axes_s cuInspiralFD(
         
         break;
 
-        case IMRPhenomXPHM:
+        case XPHM:
             if (reference_frequency.hertz == 0.0f)
             {
                 // Default reference frequency is minimum frequency:
@@ -618,7 +618,7 @@ complex_waveform_axes_s cuInspiralFD(
 waveform_axes_s cuInspiralTDFromFD(
     system_properties_s     system_properties,
     temporal_properties_s   temporal_properties,
-    Approximant             approximant                     /**< post-Newtonian approximant to use for waveform production */
+    approximant_e             approximant                     /**< post-Newtonian approximant to use for waveform production */
     ) {
          
     // Generate the conditioned waveform in the frequency domain note: redshift 
@@ -716,7 +716,7 @@ waveform_axes_s generateInspiral(
     // Reference GW frequency (frequencyUnit_t):
     frequencyUnit_t   reference_frequency,     
     // Post-Newtonian approximant to use for waveform production:
-    Approximant       approximant               
+    approximant_e       approximant               
     ) {
     
     // Hard coded constants:
@@ -755,14 +755,14 @@ waveform_axes_s generateInspiral(
     
     switch (approximant)
     {
-        case IMRPhenomD:
+        case D:
             // Generate TD waveforms with zero inclincation so that amplitude 
             // can be calculated from hplus and hcross, apply 
             // inclination-dependent factors in function below:      
             system_properties.inclination = initAngleRadians(0.0);
         break;
 
-        case IMRPhenomXPHM:
+        case XPHM:
             polarization = 0.0f;
 
         break;
@@ -785,7 +785,7 @@ waveform_axes_s generateInspiral(
     
     switch (approximant)
     {
-        case IMRPhenomD:                        
+        case D:                        
             // Apply inclination-dependent factors:
             ;waveform_axes_td = inclinationAdjust(
                 system_properties,
@@ -795,7 +795,7 @@ waveform_axes_s generateInspiral(
 
         break;
 
-        case IMRPhenomXPHM:
+        case XPHM:
             polarization = 0.0;
         break;
 
@@ -831,7 +831,7 @@ waveform_axes_s generateInspiral(
 }
 
 void generatePhenomCUDA(
-    const Approximant       approximant,
+    const approximant_e       approximant,
     const massUnit_t        mass_1, 
     const massUnit_t        mass_2, 
     const frequencyUnit_t   sample_rate, 
