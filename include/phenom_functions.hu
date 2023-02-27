@@ -6,38 +6,6 @@
 #include "units.h"
 #include "phenomd_structures.h"
 
-typedef struct {
-    // Sampling interval (timeUnit_t):
-    timeUnit_t        sampling_interval;  
-    
-    // Starting GW frequency (frequencyUnit_t):
-    frequencyUnit_t   starting_frequency;  
-    
-    // Ending GW Frequency (frequencyUnit_t):
-    frequencyUnit_t   ending_frequency;  
-    
-    // Reference GW frequency (frequencyUnit_t):
-    frequencyUnit_t   reference_frequency; 
-    
-    // Extra time to include for all waveforms to take care of situations where 
-    // the frequency is close to merger (and is sweeping rapidly) this is a few 
-    // cycles at the low frequency:
-    timeUnit_t extra_time;
-    
-    // Upper bound on the chirp time starting at starting_frequency:
-    timeUnit_t chirp_time_upper_bound;
-     
-    // Upper bound on the plunge and merger time:
-    timeUnit_t merge_time_upper_bound;
-    
-    // Upper bound on the ringdown time:
-    timeUnit_t ringdown_time_upper_bound;
-    
-    // Upper bound on the total time:
-    timeUnit_t total_time_upper_bound;
-     
-} temporal_properties_s;
-
 __global__ void _performTimeShift(
               complex_waveform_axes_s waveform_axes, 
         const float                   num_samples_time_shift
@@ -591,10 +559,10 @@ extern "C" waveform_axes_s inclinationAdjust(
           waveform_axes_s     waveform_axes_td
     ) {
     
+    /*
     float   max_amplitude = 0.0f;
     int32_t max_index     = waveform_axes_td.strain.num_samples - 1;
     
-    /*
     for (int32_t index = max_index - 1; index > -1; index--)
     {    
         const float amplitude_squared = 

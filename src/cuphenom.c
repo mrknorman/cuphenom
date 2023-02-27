@@ -441,7 +441,11 @@ int32_t main(){
     const float inclination_radians =    1.0f;
     const float distance_mpc        = 1000.0f;
 	
-	float2_t *lal_strain = NULL, *cuda_strain = NULL, *zombie_strain = NULL;
+	float2_t *lal_strain = NULL, *cuda_strain = NULL;
+    
+    #ifdef ZOMBIE 
+    float2_t *zombie_strain = NULL;
+    #endif
 		
 	const massUnit_t      mass_1      = initMassSolarMass(mass_1_msun);
 	const massUnit_t      mass_2      = initMassSolarMass(mass_2_msun);

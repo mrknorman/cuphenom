@@ -251,39 +251,6 @@ system_properties_s initBinarySystem(
     return system_properties;
 }
 
-typedef struct {
-    // Sampling interval (timeUnit_t):
-    timeUnit_t        time_interval;  
-    
-    // Starting GW frequency (frequencyUnit_t):
-    frequencyUnit_t   starting_frequency;  
-    
-    // Ending GW Frequency (frequencyUnit_t):
-    frequencyUnit_t   ending_frequency;  
-    
-    // Reference GW frequency (frequencyUnit_t):
-    frequencyUnit_t   reference_frequency; 
-    
-    // Extra time to include for all waveforms to take care of situations where 
-    // the frequency is close to merger (and is sweeping rapidly) this is a few 
-    // cycles at the low frequency:
-    timeUnit_t extra_time;
-    
-    // Upper bound on the chirp time starting at starting_frequency:
-    timeUnit_t chirp_time_upper_bound;
-     
-    // Upper bound on the plunge and merger time:
-    timeUnit_t merge_time_upper_bound;
-    
-    // Upper bound on the ringdown time:
-    timeUnit_t ringdown_time_upper_bound;
-    
-    // Upper bound on the total time:
-    timeUnit_t total_time_upper_bound;
-     
-} temporal_properties_s;
-
-
 int32_t performTimeShift(
           complex_waveform_axes_s waveform_axes,
     const timeUnit_t              shift_duration
@@ -533,7 +500,7 @@ inline frequencyUnit_t calculateKerrISCOFrequency(
 }
 
 temporal_properties_s initTemporalProperties(
-          timeUnit_t          time_interval,   // <-- Sampling interval (timeUnit_t).
+          timeUnit_t          time_interval,       // <-- Sampling interval (timeUnit_t).
           frequencyUnit_t     starting_frequency,  // <-- Starting GW frequency (frequencyUnit_t).
           frequencyUnit_t     reference_frequency, // <-- Reference GW frequency (frequencyUnit_t).
     const system_properties_s system_properties,
@@ -549,7 +516,7 @@ temporal_properties_s initTemporalProperties(
     
     temporal_properties_s temporal_properties;
     
-    temporal_properties.time_interval   = time_interval;
+    temporal_properties.time_interval       = time_interval;
     temporal_properties.reference_frequency = reference_frequency;
     
     // Adjust the reference frequency for certain precessing approximants:
@@ -638,9 +605,9 @@ waveform_axes_s convertWaveformFDToTD(
     
     cudaInterlacedIRFFT(
         num_td_samples,
-	    num_td_samples * waveform_axes_fd.time.interval.seconds,
+	    (float)num_td_samples * waveform_axes_fd.time.interval.seconds,
         (cuFloatComplex*) waveform_axes_fd.strain.values,
-        (float*) &waveform_axes_td.strain.values
+        (float**)&waveform_axes_td.strain.values
     );
     
     cudaFree(waveform_axes_fd.strain.values);

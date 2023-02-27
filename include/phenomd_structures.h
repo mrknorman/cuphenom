@@ -46,7 +46,6 @@ typedef enum {
      TIDAL_ORDER_ALL  = -1,
 } tidal_order_e;
 
-
 // ~~~~~~~~~~ General structures ~~~~~~~~~~:
 
 typedef struct 
@@ -279,6 +278,41 @@ typedef struct {
     float vlogv  [PN_PHASING_SERIES_MAX_ORDER+1];
     float vlogvsq[PN_PHASING_SERIES_MAX_ORDER+1];
 } pn_phasing_series_s;
+
+typedef struct {
+    // Time interval (timeUnit_t):
+    timeUnit_t        time_interval;  
+    
+    // Frequency interval (frequencyUnit_t):
+    frequencyUnit_t       frequency_interval;  
+    
+    // Starting GW frequency (frequencyUnit_t):
+    frequencyUnit_t   starting_frequency;  
+    
+    // Ending GW Frequency (frequencyUnit_t):
+    frequencyUnit_t   ending_frequency;  
+    
+    // Reference GW frequency (frequencyUnit_t):
+    frequencyUnit_t   reference_frequency; 
+    
+    // Extra time to include for all waveforms to take care of situations where 
+    // the frequency is close to merger (and is sweeping rapidly) this is a few 
+    // cycles at the low frequency:
+    timeUnit_t extra_time;
+    
+    // Upper bound on the chirp time starting at starting_frequency:
+    timeUnit_t chirp_time_upper_bound;
+     
+    // Upper bound on the plunge and merger time:
+    timeUnit_t merge_time_upper_bound;
+    
+    // Upper bound on the ringdown time:
+    timeUnit_t ringdown_time_upper_bound;
+    
+    // Upper bound on the total time:
+    timeUnit_t total_time_upper_bound;
+     
+} temporal_properties_s;
 
 #endif
 
