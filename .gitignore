@@ -158,6 +158,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+.jupyterlab-workspace
 
 # IPython
 profile_default/
