@@ -25,8 +25,6 @@ typedef enum {
     // IMR waveform model.
     XPHM
 } approximant_e;
-
-
  
 // Enumeration of allowed PN orders of tidal effects. All effects up to and
 // including the given order will be included in waveforms.
@@ -48,63 +46,6 @@ typedef enum {
 
 // ~~~~~~~~~~ General structures ~~~~~~~~~~:
 
-typedef struct 
-{
-    cuFloatComplex plus;
-    cuFloatComplex cross;
-} complex_strain_element_c;
-
-typedef struct 
-{
-    complex float plus;
-    complex float cross;
-} complex_strain_element_t;
-
-typedef struct 
-{
-    float plus;
-    float cross;
-} strain_element_t;
-
-typedef struct
-{
-    frequencyUnit_t *values;
-    frequencyUnit_t  interval;
-    int32_t          num_samples;
-} frequency_array_s;
-
-typedef struct
-{
-    timeUnit_t *values;
-    timeUnit_t  interval;
-    int32_t     num_samples;
-} time_array_s;
-
-typedef struct
-{
-    complex_strain_element_c *values;
-    int32_t                   num_samples;
-} complex_strain_array_s;
-
-typedef struct
-{
-    strain_element_t *values;
-    int32_t           num_samples;
-} strain_array_s;
-
-typedef struct
-{
-    frequency_array_s      frequency;
-    time_array_s           time;
-    complex_strain_array_s strain;
-} complex_waveform_axes_s;
-
-typedef struct
-{
-    time_array_s   time;
-    strain_array_s strain;
-} waveform_axes_s;
-
 // Vector of dimensionless spins {x,y,z}:
 typedef struct 
 { 
@@ -115,10 +56,10 @@ typedef struct
 
 typedef struct 
 {
-    massUnit_t mass;           // <-- Mass of companion (massUnit_t).     
-    spin_t spin;               // <-- Vector of dimensionless spins {x,y,z}.
-    float quadrapole_moment;  
-    float lambda;
+    massUnit_t mass;              // <-- Mass of companion (massUnit_t).     
+    spin_t     spin;              // <-- Vector of dimensionless spins {x,y,z}.
+    float      quadrapole_moment;  
+    float      lambda;
 } companion_s;
 
 typedef struct 
@@ -154,6 +95,139 @@ typedef struct
     // Mean anomaly of periastron:
     float mean_periastron_anomaly;  
 } system_properties_s;
+
+typedef struct {
+    // Time interval (timeUnit_t):
+    timeUnit_t        time_interval;  
+    
+    // Frequency interval (frequencyUnit_t):
+    frequencyUnit_t       frequency_interval;  
+    
+    // Starting GW frequency (frequencyUnit_t):
+    frequencyUnit_t   starting_frequency;  
+    
+    // Ending GW Frequency (frequencyUnit_t):
+    frequencyUnit_t   ending_frequency;  
+    
+    // Reference GW frequency (frequencyUnit_t):
+    frequencyUnit_t   reference_frequency; 
+    
+    // Extra time to include for all waveforms to take care of situations where 
+    // the frequency is close to merger (and is sweeping rapidly) this is a few 
+    // cycles at the low frequency:
+    timeUnit_t extra_time;
+    
+    // Upper bound on the chirp time starting at starting_frequency:
+    timeUnit_t chirp_time_upper_bound;
+     
+    // Upper bound on the plunge and merger time:
+    timeUnit_t merge_time_upper_bound;
+    
+    // Upper bound on the ringdown time:
+    timeUnit_t ringdown_time_upper_bound;
+    
+    // Upper bound on the total time:
+    timeUnit_t total_time_upper_bound;
+     
+} temporal_properties_s;
+
+typedef struct 
+{
+    cuFloatComplex plus;
+    cuFloatComplex cross;
+} complex_strain_element_c;
+
+typedef struct 
+{
+    complex float plus;
+    complex float cross;
+} complex_strain_element_t;
+
+typedef struct 
+{
+    float plus;
+    float cross;
+} strain_element_t;
+
+typedef struct
+{
+    frequencyUnit_t *values;
+    frequencyUnit_t  interval;
+    int32_t          num_samples;
+} frequency_array_s;
+
+typedef struct
+{
+    frequencyUnit_t *values;
+    frequencyUnit_t *interval_of_waveform;
+    float           *num_samples_in_waveform;
+    int32_t          max_num_samples_per_waveform;
+    int32_t          total_num_samples;
+} m_frequency_array_s;
+
+typedef struct
+{
+    timeUnit_t *values;
+    timeUnit_t  interval;
+    int32_t     num_samples;
+} time_array_s;
+
+typedef struct
+{
+    timeUnit_t *values;
+    timeUnit_t *interval_of_waveform;
+    float      *num_samples_in_waveform;
+    int32_t     max_num_samples_per_waveform;
+    int32_t     total_num_samples;
+} m_time_array_s;
+
+typedef struct
+{
+    complex_strain_element_c *values;
+    int32_t                   num_samples;
+} complex_strain_array_s;
+
+typedef struct
+{
+    complex_strain_element_c *values;
+    float                    *num_samples_in_waveform;
+    int32_t                   max_num_samples_per_waveform;
+    int32_t                   total_num_samples;
+} m_complex_strain_array_s;
+
+typedef struct
+{
+    strain_element_t *values;
+    int32_t           num_samples;
+} strain_array_s;
+
+typedef struct
+{
+    timeUnit_t             merger_time;
+    frequency_array_s      frequency;
+    time_array_s           time;
+    complex_strain_array_s strain;
+} complex_waveform_axes_s;
+
+typedef struct
+{
+    timeUnit_t               *merger_time_for_waveform;
+    m_frequency_array_s       frequency;
+    m_time_array_s            time;
+    m_complex_strain_array_s  strain;
+    temporal_properties_s    *temporal_properties_of_waveform;
+    system_properties_s      *system_properties_of_waveform;
+    int32_t                   num_waveforms;
+} m_complex_waveform_axes_s;
+
+typedef struct
+{
+    timeUnit_t     merger_time;
+    time_array_s   time;
+    strain_array_s strain;
+} waveform_axes_s;
+
+
 
 // Useful powers in GW waveforms: 1/6, 1/3, 2/3, 4/3, 5/3, 2, 7/3, 8/3, -1, 
 // -1/6, -7/6, -1/3, -2/3, -5/3 calculated using only one invocation of 'pow', 
@@ -278,41 +352,6 @@ typedef struct {
     float vlogv  [PN_PHASING_SERIES_MAX_ORDER+1];
     float vlogvsq[PN_PHASING_SERIES_MAX_ORDER+1];
 } pn_phasing_series_s;
-
-typedef struct {
-    // Time interval (timeUnit_t):
-    timeUnit_t        time_interval;  
-    
-    // Frequency interval (frequencyUnit_t):
-    frequencyUnit_t       frequency_interval;  
-    
-    // Starting GW frequency (frequencyUnit_t):
-    frequencyUnit_t   starting_frequency;  
-    
-    // Ending GW Frequency (frequencyUnit_t):
-    frequencyUnit_t   ending_frequency;  
-    
-    // Reference GW frequency (frequencyUnit_t):
-    frequencyUnit_t   reference_frequency; 
-    
-    // Extra time to include for all waveforms to take care of situations where 
-    // the frequency is close to merger (and is sweeping rapidly) this is a few 
-    // cycles at the low frequency:
-    timeUnit_t extra_time;
-    
-    // Upper bound on the chirp time starting at starting_frequency:
-    timeUnit_t chirp_time_upper_bound;
-     
-    // Upper bound on the plunge and merger time:
-    timeUnit_t merge_time_upper_bound;
-    
-    // Upper bound on the ringdown time:
-    timeUnit_t ringdown_time_upper_bound;
-    
-    // Upper bound on the total time:
-    timeUnit_t total_time_upper_bound;
-     
-} temporal_properties_s;
 
 #endif
 

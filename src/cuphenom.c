@@ -35,7 +35,6 @@ frequencyUnit_t calcMinimumFrequency(
     return initFrequencyHertz((float)min_frequency_hertz);
 }
 
-
 frequencyUnit_t calcMinimumFrequency2(
     const massUnit_t mass_1,   //<-- Mass of first object.
     const massUnit_t mass_2,   //<-- Mass of secondary object.

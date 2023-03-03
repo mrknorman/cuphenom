@@ -759,11 +759,14 @@ amplitude_coefficients_s computeDeltasFromCollocation(
 }
 
 amplitude_coefficients_s initAmplitudeCoefficients(
-        const float eta, 
-        const float chi1, 
-        const float chi2,
-        const float finspin
+    const system_properties_s system_properties,
+    const float               finspin
     ) {
+    
+    // Unpack properties:
+    const float eta     = system_properties.symmetric_mass_ratio;
+    const float chi1    = system_properties.companion[0].spin.z;
+    const float chi2    = system_properties.companion[1].spin.z;
     
     amplitude_coefficients_s coefficients;
 
@@ -822,6 +825,7 @@ inline float calculateInspiralPhaseAnsatz(
     const phase_inspiral_prefactors_s prefactors, 
     const phase_coefficients_s        coefficients
     ) {
+    
     // Assemble PN phasing series:
     const float v    = mass_frequency.third * CUBE_ROOT_PI;
     const float logv = logf(v);
@@ -972,11 +976,14 @@ float calculatePhase(
 }
 
 phase_coefficients_s initPhaseCoefficients(
-    const float eta, 
-    const float chi1, 
-    const float chi2, 
-    const float finspin
+    const system_properties_s system_properties,
+    const float               finspin
     ) {
+    
+    // Unpack properties:
+    const float eta  = system_properties.symmetric_mass_ratio;
+    const float chi1 = system_properties.companion[0].spin.z;
+    const float chi2 = system_properties.companion[1].spin.z;
     
     phase_coefficients_s coefficients;
 

@@ -10,11 +10,21 @@ float calculateSpinNorm(
     return spin.x*spin.x + spin.y*spin.y + spin.z*spin.z;
 }
 
+int32_t *calcNumStrainAxisSamples(
+    const temporal_properties_s *temporal_properties,
+    const system_properties_s   *system_properties,
+    const int32_t                num_waveforms
+    );
+
 complex_waveform_axes_s generatePhenomD(
-    const frequencyUnit_t  starting_frequency,
-    const frequencyUnit_t  ending_frequency,
-    const frequencyUnit_t  frequency_interval,
-    const int32_t          num_strain_axis_samples
+    const temporal_properties_s *temporal_properties,
+    const int32_t                num_strain_axis_samples
+    );
+
+m_complex_waveform_axes_s initPhenomDWaveformAxes(
+          temporal_properties_s *temporal_properties,
+    const system_properties_s   *system_properties,
+    const int32_t                num_waveforms
     );
 
 int32_t sumPhenomDFrequencies(
@@ -486,9 +496,8 @@ static void checkFreqeuncyParameters(
              "requested.\n Check for errors, the signal will start in band.\n", 
              __func__, starting_frequency.hertz
         );
-    }
+    }    
 }
-
 
 inline frequencyUnit_t calculateKerrISCOFrequency(
     system_properties_s system_properties
@@ -890,6 +899,10 @@ pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
 
     return phasing_series;
 }
+
+void printSystemProperties(
+    const system_properties_s *system_properties
+    );
 
 
 //XLALSimInspiralTaylorF2AlignedPhasing

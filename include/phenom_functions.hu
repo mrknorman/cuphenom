@@ -99,19 +99,33 @@ __global__ void initFrequencyArray(
 }
 
 extern "C" complex_waveform_axes_s generatePhenomD(
-    const frequencyUnit_t          starting_frequency,
-    const frequencyUnit_t          ending_frequency,
-    const frequencyUnit_t          frequency_interval,
-    const int32_t                  num_strain_axis_samples
+    const temporal_properties_s *temporal_properties,
+    const int32_t                num_strain_axis_samples
     ) {
+    
+    const frequencyUnit_t starting_frequency = 
+        temporal_properties[0].starting_frequency;
+    const frequencyUnit_t ending_frequency   = 
+        temporal_properties[0].ending_frequency;
+    const frequencyUnit_t frequency_interval = 
+        temporal_properties[0].frequency_interval;
+    
+    /*
+    _calcNumStrainAxisSamples(
+        temporal_properties,
+        system_properties,
+        num_strain_axis_samples,
+        num_waveforms
+    ); 
+    */
 
     // Initilise frequency array using the upper and lower bounds:
     const int32_t start_index = 
-        (int32_t) ((float)starting_frequency.hertz 
-            / (float)frequency_interval.hertz);
+        (int32_t) (starting_frequency.hertz 
+            / frequency_interval.hertz);
     const int32_t end_index = 
-        (int32_t) ((float)ending_frequency.hertz 
-            / (float)frequency_interval.hertz);
+        (int32_t) (ending_frequency.hertz 
+            / frequency_interval.hertz);
         
     const int32_t num_frequency_axis_samples = end_index - start_index;
     
@@ -174,9 +188,10 @@ extern "C" complex_waveform_axes_s generatePhenomD(
     };
     complex_waveform_axes_s waveform_axes_fd = 
     {
-        .frequency = frequency_array,
-        .time      = time_array,
-        .strain    = complex_strain_array
+        .merger_time = initTimeSeconds(0.0),
+        .frequency   = frequency_array,
+        .time        = time_array,
+        .strain      = complex_strain_array
     };
     
     return waveform_axes_fd;
@@ -255,8 +270,8 @@ __device__ __forceinline__ float _calculateMergerRingdownAmplitudeAnsatz(
     }
  
 // Ansatz for the intermediate amplitude. Equation 21 arXiv:1508.07253:
-__device__ __forceinline__  double _calculateIntermediateAmplitudeAnsatz(
-    const useful_powers_s                 mass_frequency, 
+__device__ __forceinline__ float _calculateIntermediateAmplitudeAnsatz(
+    const useful_powers_s          mass_frequency, 
     const amplitude_coefficients_s coefficients
     ) {
     
@@ -275,7 +290,7 @@ __device__ __forceinline__  double _calculateIntermediateAmplitudeAnsatz(
 // in VIII. Full IMR Waveforms arXiv:1508.07253:
 __device__ float _calculateAmplitude(
         const useful_powers_s                 mass_frequency,
-        const amplitude_coefficients_s coefficients,
+        const amplitude_coefficients_s        coefficients,
         const amplitude_inspiral_prefactors_s prefactors
     ) {
     // Defined in VIII. Full IMR Waveforms arXiv:1508.07253
@@ -349,7 +364,6 @@ __device__ __forceinline__ float _calculateInspiralPhaseAnsatz(
         
     return phase_ansatz;
 }
-
 
 //Ansatz for the merger-ringdown phase Equation 14 arXiv:1508.07253
 //Rholm was added when IMRPhenomHM (high mode) was added.
@@ -578,7 +592,6 @@ extern "C" waveform_axes_s inclinationAdjust(
     
     //XLALGPSSetREAL8(&(hp->epoch), -1.0*temporal_properties.time_interval.seconds * max_index);
     //XLALGPSSetREAL8(&(hc->epoch), -1.0*temporal_properties.time_interval.seconds * max_index);    
-    
     */
     
     const float cross_factor = cosf(system_properties.inclination.radians);
@@ -595,7 +608,6 @@ extern "C" waveform_axes_s inclinationAdjust(
     
     return waveform_axes_td;
 }
-
 
 __global__ void _polarisationRotation(
           strain_array_s strain,
@@ -651,7 +663,7 @@ __global__ void _sumPhenomDFrequencies(
     const amplitude_coefficients_s        amplitude_coefficients,
     const amplitude_inspiral_prefactors_s amplitude_prefactors,
     const phase_coefficients_s            phase_coefficients, 
-    const phase_inspiral_prefactors_s                phase_prefactors, 
+    const phase_inspiral_prefactors_s     phase_prefactors, 
     const int32_t                         offset,
     const float                           phase_shift,
     const float                           amp0,
@@ -906,6 +918,394 @@ extern "C" int32_t taperWaveform(
     );
     
     return 0;
+}
+
+__device__ frequencyUnit_t _initFrequencyHertz(
+	const float frequency_hertz
+	) {
+	
+	frequencyUnit_t frequency = {
+		 .hertz = frequency_hertz
+	 };
+	
+	return frequency;
+}
+
+__global__ void _printSystemProperties(
+    const system_properties_s *system_properties
+    ) {
+
+    printf("%f %f %f %f\n",
+        system_properties[0].companion[0].mass.msun,
+        system_properties[0].companion[0].mass.kilograms,
+        system_properties[0].companion[0].mass.seconds,
+        system_properties[0].companion[0].mass.meters
+    );
+    
+    printf("%f %f %f %f\n",
+        system_properties[1].companion[0].mass.msun,
+        system_properties[1].companion[0].mass.kilograms,
+        system_properties[1].companion[0].mass.seconds,
+        system_properties[1].companion[0].mass.meters
+    );
+}
+
+extern "C" void printSystemProperties(
+    const system_properties_s *system_properties
+    ) {
+    
+    _printSystemProperties<<<1,1>>>(system_properties);
+}
+
+__global__ void _calcNumStrainAxisSamples(
+          temporal_properties_s *temporal_properties,
+    const system_properties_s   *system_properties,
+          float                 *num_strain_axis_samples,
+    const int32_t                num_waveforms
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (waveform_index < num_waveforms) 
+	{
+        // Unpack temporal_properties:
+        const frequencyUnit_t ending_frequency = 
+            temporal_properties[waveform_index].ending_frequency;
+        const frequencyUnit_t starting_frequency = 
+            temporal_properties[waveform_index].starting_frequency;
+        const frequencyUnit_t frequency_interval = 
+            temporal_properties[waveform_index].frequency_interval; 
+        const frequencyUnit_t reference_frequency = 
+            temporal_properties[waveform_index].reference_frequency; 
+        
+        // If no reference frequency given, set it to the starting GW frequency:
+        temporal_properties[waveform_index].reference_frequency.hertz = 
+                  (reference_frequency.hertz > 0.0f)*reference_frequency.hertz 
+                + (reference_frequency.hertz == 0.0f)*starting_frequency.hertz;     
+        
+        // Somewhat arbitrary end point for the waveform chosen so that the end 
+        // of the waveform is well after the ringdown:
+        const frequencyUnit_t cutoff_frequency = 
+            _initFrequencyHertz(
+                f_CUT/system_properties[waveform_index].total_mass.seconds
+            );
+            
+        if (cutoff_frequency.hertz <= starting_frequency.hertz) 
+        {
+            printf(
+               "%s:\n"
+               "Warning! (cutoff_frequency: %fHz) <= (starting_frequency = %fHz)\n",
+                __func__,
+                cutoff_frequency.hertz,
+                starting_frequency.hertz
+            );
+        }
+                
+        // If no ending frequency given, set it to cuttoff frequency: 
+        temporal_properties[waveform_index].ending_frequency.hertz =
+            (ending_frequency.hertz > 0.0f)*ending_frequency.hertz 
+            + (ending_frequency.hertz == 0.0f)*cutoff_frequency.hertz;
+            
+        frequencyUnit_t new_ending_frequency = 
+            temporal_properties[waveform_index].ending_frequency;
+        
+        // If no ending frequency given, set it to cuttoff frequency: 
+        temporal_properties[waveform_index].ending_frequency.hertz = 
+                (new_ending_frequency.hertz > cutoff_frequency.hertz) ? 
+                    cutoff_frequency.hertz : new_ending_frequency.hertz;
+            
+        new_ending_frequency = 
+            temporal_properties[waveform_index].ending_frequency;
+                
+        if (new_ending_frequency.hertz <= starting_frequency.hertz)
+        {
+            printf(
+                "%s:\n"
+                "Warning! new_ending_frequency (%f) Hz <= starting_frequency"
+                " (%f) Hz, for waveform (%i).\n",
+                __func__,
+                new_ending_frequency.hertz,
+                starting_frequency.hertz,
+                waveform_index
+            );
+        }
+        
+        if (new_ending_frequency.hertz > ending_frequency.hertz)
+        {
+        
+            num_strain_axis_samples[waveform_index] = 
+                _calcNextPow2(
+                    new_ending_frequency.hertz / frequency_interval.hertz
+                ) + 1;
+        }
+        else
+        {
+            // The user has requested a higher old_ending_frequency than 
+            // Mf=frequency_cutoff.resize the frequency series to fill with zeros 
+            // beyond the cutoff frequency:
+            num_strain_axis_samples[waveform_index] = 
+                _calcNextPow2(
+                    ending_frequency.hertz / frequency_interval.hertz
+                ) + 1; 
+            // We actually want to have the length be a power of 2 + 1.
+        }
+    }
+}
+
+extern "C" int32_t calcNumStrainAxisSamples(
+          temporal_properties_s *temporal_properties,
+    const system_properties_s   *system_properties,
+    const int32_t                num_waveforms
+    ) {
+    
+    float *num_strain_axis_samples = NULL;
+    CUDA_CALL(
+        cudaMalloc(
+            (void**)&num_strain_axis_samples, 
+            sizeof(float)*(size_t)num_waveforms
+        )
+    );
+    
+    const int32_t grid_size = 
+        ((num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    _calcNumStrainAxisSamples<<<grid_size, BLOCK_SIZE>>>(
+        temporal_properties,
+        system_properties,
+        num_strain_axis_samples,
+        num_waveforms
+    );
+    
+    const int32_t max_num_strain_axis_samples = 
+        (int32_t) cudaFindMaxHost(
+            num_strain_axis_samples, 
+            num_waveforms
+        );
+        
+    return max_num_strain_axis_samples;
+}
+
+__global__ void _calcNumFrequencyAxisSamples(
+    const temporal_properties_s *temporal_properties,
+          float                 *num_strain_axis_samples,
+          float                 *num_frequency_axis_samples,
+    const int32_t                num_waveforms
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // If not outside array bounds, add value toa array element:
+    if (waveform_index < num_waveforms) 
+	{   
+        const frequencyUnit_t starting_frequency = 
+            temporal_properties[waveform_index].starting_frequency;
+        const frequencyUnit_t ending_frequency   = 
+            temporal_properties[waveform_index].ending_frequency;
+        const frequencyUnit_t frequency_interval = 
+            temporal_properties[waveform_index].frequency_interval;
+            
+        // Initilise frequency array using the upper and lower bounds:
+        const float start_index = 
+            roundf(starting_frequency.hertz 
+                / frequency_interval.hertz);
+        const float end_index = 
+            roundf(ending_frequency.hertz 
+                / frequency_interval.hertz);
+                
+        num_frequency_axis_samples[waveform_index] = 
+            end_index - start_index;
+            
+        // Error check indicies:
+        if (end_index >= num_strain_axis_samples[waveform_index])
+        {
+            printf(
+                "%s:\n"
+                "Error! Calculated end_index (%f) is greater than "
+                "num_strain_axis_samples (%f)! For waveform (%i). Exiting!",
+                __func__, 
+                end_index, 
+                num_strain_axis_samples[waveform_index], 
+                waveform_index
+            );
+        }
+        else if (start_index >= end_index)
+        {
+            printf(
+                "%s:\n"
+                "Error! Calculated start_index (%f) is greater than end_index "
+                "(%f)! For waveform (%i). Exiting!",
+                __func__, 
+                start_index, 
+                end_index, 
+                waveform_index
+            );
+        }
+    }
+}
+
+extern "C" int32_t calcNumFrequencyAxisSamples(
+    const temporal_properties_s *temporal_properties,
+          float                 *num_strain_axis_samples,
+    const int32_t                num_waveforms
+    ) {
+        
+    float *num_frequency_axis_samples = NULL;
+    CUDA_CALL(
+        cudaMalloc(
+            (void**)&num_frequency_axis_samples, 
+            sizeof(float)*(size_t)num_waveforms
+        )
+    );
+    
+    const int32_t grid_size = 
+        ((num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    _calcNumFrequencyAxisSamples<<<grid_size, BLOCK_SIZE>>>(
+        temporal_properties,
+        num_strain_axis_samples,
+        num_frequency_axis_samples,
+        num_waveforms
+    );
+    
+    const int32_t max_num_frequency_axis_samples = 
+        (int32_t) cudaFindMaxHost(
+            num_frequency_axis_samples, 
+            num_waveforms
+        );
+        
+    return max_num_frequency_axis_samples;
+}
+
+extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
+          temporal_properties_s *temporal_properties,
+          system_properties_s   *system_properties,
+    const int32_t                num_waveforms
+    ) {
+    
+    float *num_strain_axis_samples_in_waveform = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(float), 
+        num_waveforms,
+        (void**)&num_strain_axis_samples_in_waveform
+    );
+    
+    const int32_t grid_size = 
+        ((num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    _calcNumStrainAxisSamples<<<grid_size, BLOCK_SIZE>>>(
+        temporal_properties,
+        system_properties,
+        num_strain_axis_samples_in_waveform,
+        num_waveforms
+    );
+    
+    int32_t max_num_strain_axis_samples_per_waveform = 
+        (int32_t) cudaFindMaxHost(
+            num_strain_axis_samples_in_waveform, 
+            num_waveforms
+        );
+        
+    int32_t total_num_strain_axis_samples = 
+        max_num_strain_axis_samples_per_waveform * num_waveforms;
+    
+    complex_strain_element_c *strain_axis_values = NULL;
+    cudaCallocateDeviceMemory(
+        sizeof(complex_strain_element_c), 
+        total_num_strain_axis_samples,
+        (void**)&strain_axis_values
+    );
+    
+    m_complex_strain_array_s strain_axis = 
+    {
+        .values                       = strain_axis_values,
+        .num_samples_in_waveform      = num_strain_axis_samples_in_waveform,
+        .max_num_samples_per_waveform = max_num_strain_axis_samples_per_waveform,
+        .total_num_samples            = total_num_strain_axis_samples
+    };
+    
+    float *num_frequency_axis_samples_in_waveform = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(float), 
+        num_waveforms,
+        (void**)&num_frequency_axis_samples_in_waveform
+    );
+    
+    _calcNumFrequencyAxisSamples<<<grid_size, BLOCK_SIZE>>>(
+        temporal_properties,
+        num_strain_axis_samples_in_waveform,
+        num_frequency_axis_samples_in_waveform,
+        num_waveforms
+    );
+    const int32_t max_num_frequency_axis_samples_per_waveform = 
+        (int32_t) cudaFindMaxHost(
+            num_frequency_axis_samples_in_waveform, 
+            num_waveforms
+        );
+        
+    const int32_t total_num_frequency_axis_samples = 
+        max_num_frequency_axis_samples_per_waveform * num_waveforms;
+    
+    frequencyUnit_t *frequency_axis_values = NULL;
+    cudaCallocateDeviceMemory(
+        sizeof(frequencyUnit_t), 
+        total_num_frequency_axis_samples,
+        (void**)&frequency_axis_values
+    );
+    
+    frequencyUnit_t *frequency_interval_of_waveform = NULL;
+    cudaCallocateDeviceMemory(
+        sizeof(timeUnit_t), 
+        num_waveforms,
+        (void**)&frequency_interval_of_waveform
+    );
+        
+    m_frequency_array_s frequency_axis = 
+    {
+        .values                       = frequency_axis_values,
+        .interval_of_waveform         = frequency_interval_of_waveform,
+        .num_samples_in_waveform      = num_frequency_axis_samples_in_waveform,
+        .max_num_samples_per_waveform = max_num_frequency_axis_samples_per_waveform,
+        .total_num_samples            = total_num_frequency_axis_samples
+    };
+
+    timeUnit_t *time_interval_of_waveform = NULL;
+    cudaCallocateDeviceMemory(
+        sizeof(timeUnit_t), 
+        num_waveforms,
+        (void**)&time_interval_of_waveform
+    );
+    
+    m_time_array_s empty_time_axis = 
+    {
+        .values                       = NULL,
+        .interval_of_waveform         = time_interval_of_waveform,
+        .num_samples_in_waveform      = NULL,
+        .max_num_samples_per_waveform = 0,
+        .total_num_samples            = 0
+    };
+    
+    timeUnit_t *merger_time_for_waveform = NULL;
+    cudaCallocateDeviceMemory(
+        sizeof(timeUnit_t), 
+        num_waveforms,
+        (void**)&merger_time_for_waveform
+    );
+    
+    // Construct Waveform Axes:
+    m_complex_waveform_axes_s complex_waveform_axes = 
+    {
+        .merger_time_for_waveform        = merger_time_for_waveform,
+        .frequency                       = frequency_axis,
+        .time                            = empty_time_axis,
+        .strain                          = strain_axis,
+        .temporal_properties_of_waveform = temporal_properties,
+        .system_properties_of_waveform   = system_properties,
+        .num_waveforms                   = num_waveforms
+    };
+    
+    return complex_waveform_axes;
 }
 
 #endif

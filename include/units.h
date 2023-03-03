@@ -260,7 +260,7 @@ timeUnit_t multiplyTimes(
 
 timeUnit_t scaleTime(
 	const timeUnit_t time_1,
-	const float  scale
+	const float      scale
 ) {
 	timeUnit_t scaled = {
 		.seconds = time_1.seconds * scale
@@ -275,7 +275,7 @@ typedef struct {
 } frequencyUnit_t;
 
 frequencyUnit_t initFrequencyHertz(
-	float frequency_hertz
+	const float frequency_hertz
 	) {
 	
 	frequencyUnit_t frequency = {
