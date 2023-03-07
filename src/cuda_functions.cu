@@ -1,2 +1,2 @@
 #include "cuda_maths.hu"
-#include "phenom_functions.hu"
+#include "phenom_d_functions.hu"

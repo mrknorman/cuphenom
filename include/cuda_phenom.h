@@ -11,36 +11,7 @@
 
 #include "phenomd.h"
 #include "phenom_functions.h"
-
-// If x and X are approximately equal to relative accuracy epsilon
-// then set x = X.
-// If X = 0 then use an absolute comparison.
-
-float Nudge(
-    const float x, 
-    const float X, 
-    const float epsilon
-    ) {
-    
-    float new_x = x;
-    if (X != 0.0)
-    {
-        if (!gsl_fcmp(x, X, epsilon))
-        {
-            printf("Nudging value %.15g to %.15g.\n", x, X);
-            new_x = X;
-        }
-    }
-    else
-    {
-        if (fabs(x - X) < epsilon) 
-        {
-            new_x = X;
-        }
-    }
-    
-    return new_x;
-}
+#include "phenom_d_functions.h"
 
 complex_waveform_axes_s _cuPhenomDGenerateFD(
     const system_properties_s   *system_properties,
@@ -195,7 +166,8 @@ complex_waveform_axes_s _cuPhenomDGenerateFD(
 
     // Time shift so that peak amplitude is approximately at t=0
     // For details see:
-    // https://www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview/timedomain
+    // https://www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/
+    // IMRPhenomDCodeReview/timedomain
     const float phase_shift = 
         calculateMergerRingdownPhaseAnsatzDerivitive(
             amplitude_coefficients.inspiral_merger_peak_frequency, 
@@ -223,8 +195,10 @@ complex_waveform_axes_s _cuPhenomDGenerateFD(
         );
 
     // Factor of 2 b/c reference_phase is orbital phase:
-    const float phi_precalc = 2.0f*reference_phase.radians + phase;
+    const float precalculated_phase = 2.0f*reference_phase.radians + phase;
     
+    printf("Phase %f %i %f %f \n", precalculated_phase, offset, amplitude_coefficients.intermediate[0], phase_coefficients.intermediate[0]);
+
     sumPhenomDFrequencies(
         waveform_axes_fd,
         inclination.radians,
@@ -237,7 +211,7 @@ complex_waveform_axes_s _cuPhenomDGenerateFD(
         phase_shift,
         amp0,
         reference_mass_frequency,
-        phi_precalc
+        precalculated_phase
     );
     
     // Free frequency axis:

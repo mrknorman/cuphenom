@@ -16,32 +16,6 @@ int32_t *calcNumStrainAxisSamples(
     const int32_t                num_waveforms
     );
 
-complex_waveform_axes_s generatePhenomD(
-    const temporal_properties_s *temporal_properties,
-    const int32_t                num_strain_axis_samples
-    );
-
-m_complex_waveform_axes_s initPhenomDWaveformAxes(
-          temporal_properties_s *temporal_properties,
-    const system_properties_s   *system_properties,
-    const int32_t                num_waveforms
-    );
-
-int32_t sumPhenomDFrequencies(
-          complex_waveform_axes_s          waveform_axes,
-    const float                            inclination,
-    const float                            total_mass_seconds,
-    const amplitude_coefficients_s         amplitude_coefficients,
-    const amplitude_inspiral_prefactors_s  amplitude_prefactors,
-    const phase_coefficients_s             phase_coefficients, 
-    const phase_inspiral_prefactors_s      phase_prefactors, 
-    const int32_t                          offset,
-    const float                            phase_shift,
-    const float                            amp0,
-    const float                            reference_mass_frequency,
-    const float                            phi_precalc
-    );
-
 waveform_axes_s inclinationAdjust(
     const system_properties_s system_properties,
           waveform_axes_s      waveform_axes_td
@@ -188,6 +162,36 @@ static void checkSystemParameters(
     }
 }
 
+float Nudge(
+    const float x, 
+    const float X, 
+    const float epsilon
+    ) {
+    
+    // If x and X are approximately equal to relative accuracy epsilon
+    // then set x = X.
+    // If X = 0 then use an absolute comparison.
+    
+    float new_x = x;
+    if (X != 0.0)
+    {
+        if (!gsl_fcmp(x, X, epsilon))
+        {
+            printf("Nudging value %.15g to %.15g.\n", x, X);
+            new_x = X;
+        }
+    }
+    else
+    {
+        if (fabs(x - X) < epsilon) 
+        {
+            new_x = X;
+        }
+    }
+    
+    return new_x;
+}
+
 system_properties_s initBinarySystem(
     companion_s   companion_a,
     companion_s   companion_b,
@@ -246,6 +250,21 @@ system_properties_s initBinarySystem(
     system_properties.symmetric_mass_ratio = 
         system_properties.reduced_mass.msun / 
         system_properties.total_mass.msun;
+        
+    if (system_properties.symmetric_mass_ratio > 0.25f)
+    {
+        system_properties.symmetric_mass_ratio = 
+            Nudge(system_properties.symmetric_mass_ratio, 0.25f, 1.0e-6f);
+    }
+    if (system_properties.symmetric_mass_ratio > 0.25f || system_properties.symmetric_mass_ratio < 0.0f)
+    {
+        fprintf(
+            stderr, 
+            "%s:\n"
+            "Unphysical system_properties.symmetric_mass_ratio. Must be between 0. and 0.25.\n", 
+            __func__
+        );
+    }
     
     // Assign orbital properties:
     system_properties.inclination              = inclination;
