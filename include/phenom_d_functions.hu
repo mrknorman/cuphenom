@@ -151,43 +151,65 @@ __device__ __forceinline__ float predictIrradiatedEnergy(
      return _predictIrradiatedEnergy(eta, s);
 }
 
-__device__ __forceinline__ float calculateRingdownFrequency(
-    const float   eta, 
-    const float   chi1, 
-    const float   chi2, 
-    const float   final_spin,
-    const double *QNM_data
+float *calculateRingdownFrequencySpline(
+    const double *QNM_data,
+    const float  *final_spins,
+    const int32_t num_waveforms
     ) {
-
-    if (final_spin > 1.0f)
-    {
-        printf(
-            "%s:\n"
-            "Warning! Final spin (%f) > 1.0 not supported!\n",
-            __func__, final_spin
-            );
-    }
     
-    /*
     gsl_interp_accel *acc = gsl_interp_accel_alloc();
     gsl_spline *i_ringdown_frequency = 
        gsl_spline_alloc(gsl_interp_cspline, QNMData_length);
     gsl_spline_init(
        i_ringdown_frequency, QNMData_a, QNM_data, QNMData_length
     );
-
-    const float return_value = 
-       (float)gsl_spline_eval(i_ringdown_frequency, (double)final_spin, acc) 
-       / (1.0f - predictIrradiatedEnergy(eta, chi1, chi2));
+    
+    float* interpolate_spline_values = 
+        (float*)malloc(sizeof(float)*(size_t)num_waveforms);
+    
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        if (final_spins[index]> 1.0f)
+        {
+            printf(
+                "%s:\n"
+                "Warning! Final spin (%f) > 1.0 not supported!\n",
+                __func__, final_spins[index]
+                );
+        }
+        
+        interpolate_spline_values[index] = 
+            (float)gsl_spline_eval(
+                i_ringdown_frequency, 
+                (double)final_spins[index], 
+                acc
+            );
+    }       
 
     gsl_spline_free(i_ringdown_frequency);
     gsl_interp_accel_free(acc);
-    */
     
-    const float return_value = 1.0f;
+    float *interpolate_spline_values_g = NULL;
+    cudaToDevice(
+        (void*)interpolate_spline_values, 
+        sizeof(float),
+        num_waveforms,
+        (void**)&interpolate_spline_values_g
+    );
+    free(interpolate_spline_values);
+    
+    return interpolate_spline_values_g;
+}
 
-
-    return return_value;
+__device__ __forceinline__ float calculateRingdownFrequency(
+    const float   eta, 
+    const float   chi1, 
+    const float   chi2, 
+    const float   interpoalated_spline
+    ) {
+    
+    return interpoalated_spline / 
+        (1.0f - predictIrradiatedEnergy(eta, chi1, chi2));
 }
 
 typedef enum tagNRTidal_version_type {
@@ -433,7 +455,7 @@ __device__ __forceinline__ float calculateMergerRingdownAmplitudeAnsatzDerivativ
 
 // Formula to predict the final spin. Equation 3.6 arXiv:1508.07250
 // s defined around Equation 3.6.
-__device__ __forceinline__ float _calcFinalSpin(
+inline float _calcFinalSpin(
     const float eta, 
     const float s
     ) {
@@ -451,7 +473,7 @@ __device__ __forceinline__ float _calcFinalSpin(
            (-0.8676969352555539f + 2.064046835273906f*eta)*s3));
 }
 
-__device__ __forceinline__ float calcFinalSpin(
+float calcFinalSpin(
     const system_properties_s system_properties
     ) {
     
@@ -753,8 +775,9 @@ __device__  __forceinline__ amplitude_coefficients_s
 
 __device__  __forceinline__ amplitude_coefficients_s 
     initAmplitudeCoefficients(
-        const system_properties_s system_properties,
-        const float               finspin
+        const system_properties_s  system_properties,
+        const float                ringdown_spline,
+        const float                damping_spline
     ) {
     
     // Unpack properties:
@@ -782,9 +805,9 @@ __device__  __forceinline__ amplitude_coefficients_s
     const float xi = -1.0f + coefficients.chi;
 
     coefficients.ringdown_frequency = 
-        calculateRingdownFrequency(eta, chi1, chi2, finspin, QNMData_fring);
+        calculateRingdownFrequency(eta, chi1, chi2, ringdown_spline);
     coefficients.damping_time = 
-        calculateRingdownFrequency(eta, chi1, chi2, finspin, QNMData_fdamp);
+        calculateRingdownFrequency(eta, chi1, chi2, damping_spline);
     
     // Compute gamma_i's, rho_i's first then delta_i's:
     calcCoefficients(
@@ -971,8 +994,9 @@ __device__ __forceinline__ float calculatePhase(
 }
 
 __device__ __forceinline__ phase_coefficients_s initPhaseCoefficients(
-    const system_properties_s system_properties,
-    const float               finspin
+    const system_properties_s  system_properties,
+    const float                ringdown_spline,
+    const float                damping_spline
     ) {
     
     // Unpack properties:
@@ -1018,9 +1042,9 @@ __device__ __forceinline__ phase_coefficients_s initPhaseCoefficients(
     );
 
     coefficients.ringdown_frequency = 
-       calculateRingdownFrequency(eta, chi1, chi2, finspin, QNMData_fring);
+       calculateRingdownFrequency(eta, chi1, chi2, ringdown_spline);
     coefficients.damping_time = 
-       calculateRingdownFrequency(eta, chi1, chi2, finspin, QNMData_fdamp);
+       calculateRingdownFrequency(eta, chi1, chi2, damping_spline);
        
     return coefficients;
 }
@@ -1452,7 +1476,7 @@ extern "C" complex_waveform_axes_s generatePhenomD(
     return waveform_axes_fd;
 }
 
-__global__ void _sumPhenomDFrequencies(
+__global__ void _sumPhenomDFrequenciesOLD(
           complex_waveform_axes_s         waveform_axes_fd,
     const float                           plus_factor,
     const float                           cross_factor,
@@ -1545,7 +1569,7 @@ __global__ void _sumPhenomDFrequencies(
     }    
 }
 
-extern "C" int32_t sumPhenomDFrequencies(
+extern "C" int32_t sumPhenomDFrequenciesOLD(
           complex_waveform_axes_s         waveform_axes_fd,
     const float                           inclination,
     const float                           total_mass_seconds,
@@ -1569,7 +1593,7 @@ extern "C" int32_t sumPhenomDFrequencies(
     const float cross_factor = cosf(inclination);
     const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
     
-    _sumPhenomDFrequencies<<<grid_size, BLOCK_SIZE>>>(
+    _sumPhenomDFrequenciesOLD<<<grid_size, BLOCK_SIZE>>>(
         waveform_axes_fd,
         plus_factor,
         cross_factor,
@@ -1588,10 +1612,113 @@ extern "C" int32_t sumPhenomDFrequencies(
     return 0;
 }
 
+extern "C" int32_t sumPhenomDFrequenciesOLD(
+          complex_waveform_axes_s         waveform_axes_fd,
+    const float                           inclination,
+    const float                           total_mass_seconds,
+    const amplitude_coefficients_s        amplitude_coefficients,
+    const amplitude_inspiral_prefactors_s amplitude_prefactors,
+    const phase_coefficients_s            phase_coefficients, 
+    const phase_inspiral_prefactors_s     phase_prefactors, 
+    const int32_t                         offset,
+    const float                           phase_shift,
+    const float                           amp0,
+    const float                           reference_mass_frequency,
+    const float                           phi_precalc
+    ) {
+    
+    const int32_t grid_size = 
+        (
+            (waveform_axes_fd.frequency.num_samples + BLOCK_SIZE - 1) 
+            / BLOCK_SIZE
+        );
+        
+    const float cross_factor = cosf(inclination);
+    const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
+    
+    _sumPhenomDFrequenciesOLD<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes_fd,
+        plus_factor,
+        cross_factor,
+        total_mass_seconds,
+        amplitude_coefficients,
+        amplitude_prefactors,
+        phase_coefficients, 
+        phase_prefactors, 
+        offset,
+        phase_shift,
+        amp0,
+        reference_mass_frequency,
+        phi_precalc
+    );
+    
+    return 0;
+}
+
+__global__ void calculateInclinationFactors(
+    const m_waveform_axes_fd  waveform_axes_fd,
+          float              *cross_factor, 
+          float              *plus_factor
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // If not outside array bounds sum pheom frequencies:
+    if (waveform_index < waveform_axes_fd.frequency.num_samples) 
+	{    
+        cross_factor[waveform_index] = cosf(inclination);
+        plus_factor[waveform_index] = 
+            0.5f*(
+                  1.0f 
+                + _square(cross_factor[waveform_index])
+            );
+    }
+}
+
+extern "C" int32_t sumPhenomDFrequencies(
+          complex_waveform_axes_s         m_waveform_axes_fd
+    ) {
+    
+    calculateInclinationFactors(
+        const m_waveform_axes_fd  waveform_axes_fd,
+              float              *cross_factor, 
+              float              *plus_factor
+        ) 
+        
+    const int32_t grid_size = 
+        (
+            (waveform_axes_fd.frequency.num_samples + BLOCK_SIZE - 1) 
+            / BLOCK_SIZE
+        );
+    
+    /*
+    _sumPhenomDFrequenciesOLD<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes_fd,
+        plus_factor,
+        cross_factor,
+        total_mass_seconds,
+        amplitude_coefficients,
+        amplitude_prefactors,
+        phase_coefficients, 
+        phase_prefactors, 
+        offset,
+        phase_shift,
+        amp0,
+        reference_mass_frequency,
+        phi_precalc
+    );
+    */
+    
+    return 0;
+}
+
 __global__ void _initPhenomDVariables(
     const system_properties_s    *system_properties_of,
     const temporal_properties_s  *temporal_properties_of,
           aproximant_variables_s *aproximant_variables_of,
+    const float                  *ringdown_splines,
+    const float                  *damping_splines,
     const int32_t                 num_waveforms
     ) {
     
@@ -1640,31 +1767,19 @@ __global__ void _initPhenomDVariables(
                 (int32_t)(starting_frequency.hertz / frequency_interval.hertz);
         }
         
-        // Calculate phenomenological parameters:
-        const float final_spin = calcFinalSpin(system_properties); 
-
-        if (final_spin < MIN_FINAL_SPIN)
-        {
-            printf(
-                "%s: \n"
-                "Final spin (%f) and ISCO frequency of this system_properties"
-                " are small, the model might misbehave here. \n",
-                __func__, 
-                final_spin
-            );
-        }
-
         // Init amplitude coefficients:
         amplitude_coefficients_s amplitude_coefficients = 
             initAmplitudeCoefficients(
                 system_properties,
-                final_spin
+                ringdown_splines[waveform_index],
+                damping_splines[waveform_index]
             );
         
         phase_coefficients_s phase_coefficients = 
             initPhaseCoefficients(
-                system_properties, 
-                final_spin
+                system_properties,
+                ringdown_splines[waveform_index],
+                damping_splines[waveform_index]
             );
             
         pn_phasing_series_s phasing_series =
@@ -1754,6 +1869,8 @@ __global__ void _initPhenomDVariables(
 extern "C" aproximant_variables_s *initPhenomDVariables(
     const system_properties_s    *system_properties_of,
     const temporal_properties_s  *temporal_properties_of,
+    const float                  *ringdown_splines,
+    const float                  *damping_splines,
     const int32_t                 num_waveforms
     ) {
     
@@ -1771,6 +1888,8 @@ extern "C" aproximant_variables_s *initPhenomDVariables(
         system_properties_of,
         temporal_properties_of,
         aproximant_variables_of,
+        ringdown_splines,
+        damping_splines,
         num_waveforms
     );
     
@@ -1779,9 +1898,57 @@ extern "C" aproximant_variables_s *initPhenomDVariables(
 
 extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
           temporal_properties_s *temporal_properties_of,
-          system_properties_s   *system_properties_of,
+    const system_properties_s   *system_properties_of,
     const int32_t                num_waveforms
     ) {
+    
+    float* final_spins = (float*)malloc(sizeof(float)*(size_t)num_waveforms);
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        final_spins[index] = calcFinalSpin(system_properties_of[index]); 
+
+        if (final_spins[index] < MIN_FINAL_SPIN)
+        {
+            fprintf(
+                stderr, 
+                "%s: \n"
+                "Final spin (%f) and ISCO frequency of this system_properties"
+                " are small, the model might misbehave here. \n",
+                __func__, 
+                final_spins[index]
+            );
+        }    
+    }
+    
+    const float *ringdown_splines = calculateRingdownFrequencySpline(
+        QNMData_fring,
+        final_spins,
+        num_waveforms
+    );
+    
+    const float *damping_splines = calculateRingdownFrequencySpline(
+        QNMData_fdamp,
+        final_spins,
+        num_waveforms
+    );
+    
+    free(final_spins);
+    
+    temporal_properties_s *temporal_properties_of_g = NULL;
+    cudaToDevice(
+        (void*) temporal_properties_of, 
+        sizeof(temporal_properties_s),
+        num_waveforms,
+        (void**) &temporal_properties_of_g
+    );
+        
+    system_properties_s *system_properties_of_g = NULL;
+    cudaToDevice(
+        (void*) system_properties_of, 
+        sizeof(system_properties_s),
+        num_waveforms,
+        (void**) &system_properties_of_g
+    );
     
     float *num_strain_axis_samples_in_waveform = NULL;
     cudaAllocateDeviceMemory(
@@ -1794,8 +1961,8 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         ((num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
     _calcNumStrainAxisSamples<<<grid_size, BLOCK_SIZE>>>(
-        temporal_properties_of,
-        system_properties_of,
+        temporal_properties_of_g,
+        system_properties_of_g,
         num_strain_axis_samples_in_waveform,
         num_waveforms
     );
@@ -1833,7 +2000,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
     );
     
     _calcNumFrequencyAxisSamples<<<grid_size, BLOCK_SIZE>>>(
-        temporal_properties_of,
+        temporal_properties_of_g,
         num_strain_axis_samples_in_waveform,
         num_frequency_axis_samples_in_waveform,
         num_waveforms
@@ -1896,10 +2063,14 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
     
     aproximant_variables_s *aproximant_variables_of = 
         initPhenomDVariables(
-            system_properties_of,
-            temporal_properties_of,
+            system_properties_of_g,
+            temporal_properties_of_g,
+            ringdown_splines,
+            damping_splines,
             num_waveforms
         );
+        
+    cudaFree((void*)ringdown_splines); cudaFree((void*)damping_splines); 
     
     aproximant_variables_of = NULL;
     
@@ -1910,8 +2081,8 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         .frequency                = frequency_axis,
         .time                     = empty_time_axis,
         .strain                   = strain_axis,
-        .temporal_properties_of   = temporal_properties_of,
-        .system_properties_of     = system_properties_of,
+        .temporal_properties_of   = temporal_properties_of_g,
+        .system_properties_of     = system_properties_of_g,
         .aproximant_variables_of  = aproximant_variables_of,
         .num_waveforms            = num_waveforms
     };

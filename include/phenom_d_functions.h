@@ -21,9 +21,24 @@ int32_t sumPhenomDFrequencies(
     const float                           phi_precalc
     );
 
+int32_t sumPhenomDFrequenciesOLD(
+          complex_waveform_axes_s         waveform_axes_fd,
+    const float                           inclination,
+    const float                           total_mass_seconds,
+    const amplitude_coefficients_s        amplitude_coefficients,
+    const amplitude_inspiral_prefactors_s amplitude_prefactors,
+    const phase_coefficients_s            phase_coefficients, 
+    const phase_inspiral_prefactors_s     phase_prefactors, 
+    const int32_t                         offset,
+    const float                           phase_shift,
+    const float                           amp0,
+    const float                           reference_mass_frequency,
+    const float                           phi_precalc
+    );
+
 m_complex_waveform_axes_s initPhenomDWaveformAxes(
           temporal_properties_s *temporal_properties,
-          system_properties_s   *system_properties,
+    const system_properties_s   *system_properties,
     const int32_t                num_waveforms
     );
 

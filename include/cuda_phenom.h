@@ -199,7 +199,7 @@ complex_waveform_axes_s _cuPhenomDGenerateFD(
     
     printf("Phase %f %i %f %f \n", precalculated_phase, offset, amplitude_coefficients.intermediate[0], phase_coefficients.intermediate[0]);
 
-    sumPhenomDFrequencies(
+    sumPhenomDFrequenciesOLD(
         waveform_axes_fd,
         inclination.radians,
         total_mass.seconds,
@@ -280,26 +280,10 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
         );   
     }
     
-    temporal_properties_s *temporal_properties_g = NULL;
-    cudaToDevice(
-        (void*) temporal_properties, 
-        sizeof(temporal_properties_s),
-        num_waveforms,
-        (void**) &temporal_properties_g
-    );
-        
-    system_properties_s *system_properties_g = NULL;
-    cudaToDevice(
-        (void*) system_properties, 
-        sizeof(system_properties_s),
-        num_waveforms,
-        (void**) &system_properties_g
-    );
-    
     m_complex_waveform_axes_s m_waveform_axes_fd = 
         initPhenomDWaveformAxes(
-            temporal_properties_g,
-            system_properties_g,
+            temporal_properties,
+            system_properties,
             num_waveforms
         );
         

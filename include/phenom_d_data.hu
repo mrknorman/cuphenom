@@ -527,17 +527,17 @@ __constant__ const float *PHASE_INSPIRAL_COEFFICIENT_TERMS[] =
     )
 
 // Other tables:
-__constant__ size_t QNMData_length = 1003u;
+const size_t QNMData_length = 1003u;
 
-__constant__ double QNMData_a[] = {
+const double QNMData_a[] = {
     #include "qnm_data_a.csv" 
 };
 
-__constant__ double QNMData_fring[] = {
+const double QNMData_fring[] = {
     #include "qnm_ringdown_frequency_real.csv"
 };
 
-__constant__ double QNMData_fdamp[] = {
+const double QNMData_fdamp[] = {
     #include "qnm_ringdown_frequency_imaginary.csv"
 };
 
