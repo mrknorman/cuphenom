@@ -1,7 +1,7 @@
 #ifndef PHENOM_FUNCTIONS_H
 #define PHENOM_FUNCTIONS_H
 
-#include <cuda_maths.h>
+#include <cuda_tools/cuda_maths.h>
 
 float calculateSpinNorm(
     const spin_t spin
@@ -860,19 +860,25 @@ pn_phasing_series_s PNPhasing_F2(
         case TIDAL_ORDER_75PN:
             pfa.v[15] = lambda1*TaylorF2Phasing_15PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_15PNTidalCoeff(m2M);
+            // fall through
         case TIDAL_ORDER_ALL:
+            // fall through
         case TIDAL_ORDER_7PN:
             pfa.v[14] = lambda1*TaylorF2Phasing_14PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_14PNTidalCoeff(m2M);
+            // fall through
         case TIDAL_ORDER_65PN:
             pfa.v[13] = lambda1*TaylorF2Phasing_13PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_13PNTidalCoeff(m2M);
+            // fall through
         case TIDAL_ORDER_6PN:
             pfa.v[12] = lambda1*TaylorF2Phasing_12PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_12PNTidalCoeff(m2M);
+            // fall through
         case TIDAL_ORDER_5PN:
             pfa.v[10] = lambda1*TaylorF2Phasing_10PNTidalCoeff(m1M) 
                       + lambda2*TaylorF2Phasing_10PNTidalCoeff(m2M);
+            // fall through
         case TIDAL_ORDER_0PN:
             break;
         default:
@@ -880,7 +886,7 @@ pn_phasing_series_s PNPhasing_F2(
                 stderr, 
                 "%s:\nWarning! Invalid tidal PN order (%i)\n.",
                 __func__, tidal_pn_order
-            );    
+            );
         break;
     }
     
@@ -889,7 +895,7 @@ pn_phasing_series_s PNPhasing_F2(
     {
         pfa.v      [index] *= pfaN;
         pfa.vlogv  [index] *= pfaN;
-        pfa.vlogvsq[index] *= pfaN;
+        //pfa.vlogvsq[index] *= pfaN; Currenly uninitilised come back too at some point
     }
     
     return pfa;

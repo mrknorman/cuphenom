@@ -722,9 +722,7 @@ __device__  __forceinline__ amplitude_coefficients_s
             collocation_point_powers[2], 
             amplitude_coefficients
         );
-        
-    printf("Problem here: %f, %f \n", v3, d2);
-
+    
     // v2 is the value of the amplitude evaluated at f2
     // they come from the fit of the collocation points in the intermediate 
     // region.
@@ -1435,7 +1433,7 @@ extern "C" complex_waveform_axes_s generatePhenomD(
     complex_strain_array_s complex_strain_array;
     cudaCallocateDeviceMemory(
         num_strain_axis_samples,
-        sizeof(complex_strain_element_t),
+        sizeof(complex_strain_element_c),
         (void**)&(complex_strain_array.values)
     );
     complex_strain_array.num_samples = num_strain_axis_samples;
@@ -1612,62 +1610,23 @@ extern "C" int32_t sumPhenomDFrequenciesOLD(
     return 0;
 }
 
-extern "C" int32_t sumPhenomDFrequenciesOLD(
-          complex_waveform_axes_s         waveform_axes_fd,
-    const float                           inclination,
-    const float                           total_mass_seconds,
-    const amplitude_coefficients_s        amplitude_coefficients,
-    const amplitude_inspiral_prefactors_s amplitude_prefactors,
-    const phase_coefficients_s            phase_coefficients, 
-    const phase_inspiral_prefactors_s     phase_prefactors, 
-    const int32_t                         offset,
-    const float                           phase_shift,
-    const float                           amp0,
-    const float                           reference_mass_frequency,
-    const float                           phi_precalc
-    ) {
-    
-    const int32_t grid_size = 
-        (
-            (waveform_axes_fd.frequency.num_samples + BLOCK_SIZE - 1) 
-            / BLOCK_SIZE
-        );
-        
-    const float cross_factor = cosf(inclination);
-    const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
-    
-    _sumPhenomDFrequenciesOLD<<<grid_size, BLOCK_SIZE>>>(
-        waveform_axes_fd,
-        plus_factor,
-        cross_factor,
-        total_mass_seconds,
-        amplitude_coefficients,
-        amplitude_prefactors,
-        phase_coefficients, 
-        phase_prefactors, 
-        offset,
-        phase_shift,
-        amp0,
-        reference_mass_frequency,
-        phi_precalc
-    );
-    
-    return 0;
-}
-
 __global__ void calculateInclinationFactors(
-    const m_waveform_axes_fd  waveform_axes_fd,
-          float              *cross_factor, 
-          float              *plus_factor
+    const m_complex_waveform_axes_s  waveform_axes_fd,
+          float                      *cross_factor, 
+          float                      *plus_factor
     ) {
     
     // Assign unique thread index for GPU calculation:
     const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
     
     // If not outside array bounds sum pheom frequencies:
-    if (waveform_index < waveform_axes_fd.frequency.num_samples) 
-	{    
-        cross_factor[waveform_index] = cosf(inclination);
+    if (waveform_index < waveform_axes_fd.num_waveforms) 
+	{   
+        const angularUnit_t inclination = 
+            waveform_axes_fd
+                .system_properties_of[waveform_index].inclination;
+        
+        cross_factor[waveform_index] = cosf(inclination.radians);
         plus_factor[waveform_index] = 
             0.5f*(
                   1.0f 
@@ -1676,39 +1635,138 @@ __global__ void calculateInclinationFactors(
     }
 }
 
-extern "C" int32_t sumPhenomDFrequencies(
-          complex_waveform_axes_s         m_waveform_axes_fd
+__global__ void _sumPhenomDFrequencies(
+          m_complex_waveform_axes_s  waveform_axes_fd,
+    const float                     *plus_factors,
+    const float                     *cross_factors\
     ) {
     
-    calculateInclinationFactors(
-        const m_waveform_axes_fd  waveform_axes_fd,
-              float              *cross_factor, 
-              float              *plus_factor
-        ) 
+    //
+    //Description.
+    //@param 
+    //@see 
+    //@return void
+    //
+    
+    // Assign unique thread index for GPU calculation:
+   // const int32_t thread_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    //const int32_t 
+    
+    /*
+    
+    // If not outside array bounds sum pheom frequencies:
+    if (sample_index < waveform_axes_fd.frequency.num_samples) 
+	{    
+        // Shift index for frequency series if needed:
+        const int32_t offset_index = sample_index + offset; 
+
+        // Calculate usefull powers of mass_frequency value:
+        const useful_powers_s mass_frequency = 
+            _initUsefulPowers(
+                total_mass_seconds*
+                    waveform_axes_fd.frequency.values[sample_index].hertz
+            );    
+
+        // Calculate amplitude value at current sample index:
+        const float amplitude = 
+            calculateAmplitude(
+                mass_frequency, 
+                amplitude_coefficients, 
+                amplitude_prefactors
+            );
         
-    const int32_t grid_size = 
+        // Calculate phase value at current sample index:
+        const float phase = 
+            calculatePhase(
+                mass_frequency, 
+                phase_coefficients, 
+                phase_prefactors, 
+                1.0f, 
+                1.0f
+            ) 
+            - phase_shift*(mass_frequency.one - reference_mass_frequency) 
+            - phi_precalc;
+                        
+        // Convert values to cuFloatComplex:
+        const cuFloatComplex phase_c = 
+            (cuFloatComplex) 
+            {
+                0.0f,
+                -1*phase
+            };
+        
+        const cuFloatComplex amplitude_c = 
+            (cuFloatComplex) 
+            {
+                amp0*amplitude,
+                0.0f
+            };
+        
+        // Calculate strain at current sample_index:
+        waveform_axes_fd.strain.values[offset_index].plus = 
+            cuCmulf(amplitude_c,cudaCExpf(phase_c));
+    
+        // Calcualte plus and cross polarizations:
+        waveform_axes_fd.strain.values[offset_index].cross = 
+            cuCmulf(
+                waveform_axes_fd.strain.values[offset_index].plus, 
+                (cuFloatComplex) {0.0f, -1*cross_factor}
+            );
+            
+        waveform_axes_fd.strain.values[offset_index].plus =
+            cuCmulf(
+                waveform_axes_fd.strain.values[offset_index].plus,
+                (cuFloatComplex) {plus_factor, 0.0}
+            );
+    }    
+    */
+}
+
+extern "C" int32_t sumPhenomDFrequencies(
+    m_complex_waveform_axes_s waveform_axes_fd
+    ) {
+    
+    float *cross_factors = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(float), 
+        waveform_axes_fd.num_waveforms,
+        (void**)&cross_factors
+    );
+    
+    float *plus_factors = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(float), 
+        waveform_axes_fd.num_waveforms,
+        (void**)&cross_factors
+    );
+    
+    int32_t grid_size = 
+    (
+        (waveform_axes_fd.frequency.total_num_samples + BLOCK_SIZE - 1) 
+        / BLOCK_SIZE
+    );
+    
+    calculateInclinationFactors<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes_fd,
+        cross_factors, 
+        plus_factors
+    );
+        
+    grid_size = 
         (
-            (waveform_axes_fd.frequency.num_samples + BLOCK_SIZE - 1) 
+            (waveform_axes_fd.frequency.total_num_samples + BLOCK_SIZE - 1) 
             / BLOCK_SIZE
         );
     
-    /*
-    _sumPhenomDFrequenciesOLD<<<grid_size, BLOCK_SIZE>>>(
+    _sumPhenomDFrequencies<<<grid_size, BLOCK_SIZE>>>(
         waveform_axes_fd,
-        plus_factor,
-        cross_factor,
-        total_mass_seconds,
-        amplitude_coefficients,
-        amplitude_prefactors,
-        phase_coefficients, 
-        phase_prefactors, 
-        offset,
-        phase_shift,
-        amp0,
-        reference_mass_frequency,
-        phi_precalc
+        plus_factors,
+        cross_factors
     );
-    */
+    
+    cudaFree((void*)cross_factors);
+    cudaFree((void*)plus_factors);
     
     return 0;
 }
@@ -1843,9 +1901,7 @@ __global__ void _initPhenomDVariables(
 
         // Factor of 2 b/c reference_phase is orbital phase:
         const float precalculated_phase = 2.0f*reference_phase.radians + phase;
-        
-        printf("Phase %f %i %f %f \n", precalculated_phase, offset, amplitude_coefficients.intermediate[0], phase_coefficients.intermediate[0]);
-        
+                
         phenom_d_variables_s variables = 
         {
             .offset                   = offset,

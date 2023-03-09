@@ -6,10 +6,10 @@
 #include <inttypes.h>
 #include <time.h>
 
-#include "py_tools.h"
+#include "./py_tools/py_tools.h"
 #include "units.h"
 
-#include "console.h"
+#include "io_tools/console.h"
 
 frequencyUnit_t calcMinimumFrequency(
     const massUnit_t mass_1,   //<-- Mass of first object.

@@ -138,12 +138,6 @@ typedef struct
 
 typedef struct 
 {
-    complex float plus;
-    complex float cross;
-} complex_strain_element_t;
-
-typedef struct 
-{
     float plus;
     float cross;
 } strain_element_t;

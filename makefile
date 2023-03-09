@@ -6,10 +6,10 @@ CC = nvcc
 
 #COMPILER_FLAGS specifies the additional compilation options we're using
 
-INCLUDE         = -I./include -I./io_tools/include -I./py_tools/include -I./cuda_tools/include
-LAL_INCLUDE     = -I/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/include
-PYTHON_INCLUDE  = -I/home/michael.norman/.conda/envs/dragon/include/python3.10
-NVIDIA_FLAGS   = -arch=native -use-fast-math -Xcompiler -march=native -Xcompiler -Ofast -Xcompiler -std=gnu11  -forward-unknown-to-host-compiler
+INCLUDE        = -I./include -I./io_tools/include -I./py_tools/include -I./cuda_tools/include
+LAL_INCLUDE    = -I/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/include
+PYTHON_INCLUDE = -I/home/michael.norman/.conda/envs/dragon/include/python3.10 -I/home/michael.norman/.conda/envs/dragon/lib/python3.10/site-packages/numpy/core/include/
+NVIDIA_FLAGS   = -arch=native -use-fast-math -O3 -Xcompiler -march=native -Xcompiler -Ofast -forward-unknown-to-host-compiler
 NVIDIA_DEBUG   = -G -Xcompiler -rdynamic
 
 DEBUG_FLAG   = -g

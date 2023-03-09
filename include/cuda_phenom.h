@@ -197,8 +197,6 @@ complex_waveform_axes_s _cuPhenomDGenerateFD(
     // Factor of 2 b/c reference_phase is orbital phase:
     const float precalculated_phase = 2.0f*reference_phase.radians + phase;
     
-    printf("Phase %f %i %f %f \n", precalculated_phase, offset, amplitude_coefficients.intermediate[0], phase_coefficients.intermediate[0]);
-
     sumPhenomDFrequenciesOLD(
         waveform_axes_fd,
         inclination.radians,
