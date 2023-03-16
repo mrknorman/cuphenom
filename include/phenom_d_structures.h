@@ -351,7 +351,6 @@ typedef struct{
     
     float precalculated_phase;
     float phase_shift;
-    
 } phenom_d_variables_s;
 
 typedef union{

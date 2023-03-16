@@ -285,6 +285,10 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
             num_waveforms
         );
         
+    sumPhenomDFrequencies(
+        m_waveform_axes_fd
+    );
+            
     const int32_t num_strain_axis_samples =
         m_waveform_axes_fd.strain.max_num_samples_per_waveform;
     

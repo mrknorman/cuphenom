@@ -1299,7 +1299,7 @@ __global__ void sumFrequenciesPhenomTidal(
     const amplitude_coefficients_s         amplitude_coefficients,
     const amplitude_inspiral_prefactors_s  amplitude_prefactors,
     const phase_coefficients_s             phase_coefficients, 
-    const phase_inspiral_prefactors_s                 phase_prefactors, 
+    const phase_inspiral_prefactors_s      phase_prefactors, 
     const float                           *tidal_amplitude_array,
     const int32_t                          offset,
     const float                           *frequency_axis_hertz,
@@ -1611,7 +1611,7 @@ extern "C" int32_t sumPhenomDFrequenciesOLD(
 }
 
 __global__ void calculateInclinationFactors(
-    const m_complex_waveform_axes_s  waveform_axes_fd,
+    const m_complex_waveform_axes_s   waveform_axes_fd,
           float                      *cross_factor, 
           float                      *plus_factor
     ) {
@@ -1622,7 +1622,7 @@ __global__ void calculateInclinationFactors(
     // If not outside array bounds sum pheom frequencies:
     if (waveform_index < waveform_axes_fd.num_waveforms) 
 	{   
-        const angularUnit_t inclination = 
+        const angularUnit_t inclination =
             waveform_axes_fd
                 .system_properties_of[waveform_index].inclination;
         
@@ -1649,78 +1649,126 @@ __global__ void _sumPhenomDFrequencies(
     //
     
     // Assign unique thread index for GPU calculation:
-   // const int32_t thread_index = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    //const int32_t 
-    
-    /*
+    const int32_t thread_index = blockIdx.x * blockDim.x + threadIdx.x;
     
     // If not outside array bounds sum pheom frequencies:
-    if (sample_index < waveform_axes_fd.frequency.num_samples) 
-	{    
-        // Shift index for frequency series if needed:
-        const int32_t offset_index = sample_index + offset; 
-
-        // Calculate usefull powers of mass_frequency value:
-        const useful_powers_s mass_frequency = 
-            _initUsefulPowers(
-                total_mass_seconds*
-                    waveform_axes_fd.frequency.values[sample_index].hertz
-            );    
-
-        // Calculate amplitude value at current sample index:
-        const float amplitude = 
-            calculateAmplitude(
-                mass_frequency, 
-                amplitude_coefficients, 
-                amplitude_prefactors
-            );
-        
-        // Calculate phase value at current sample index:
-        const float phase = 
-            calculatePhase(
-                mass_frequency, 
-                phase_coefficients, 
-                phase_prefactors, 
-                1.0f, 
-                1.0f
-            ) 
-            - phase_shift*(mass_frequency.one - reference_mass_frequency) 
-            - phi_precalc;
-                        
-        // Convert values to cuFloatComplex:
-        const cuFloatComplex phase_c = 
-            (cuFloatComplex) 
-            {
-                0.0f,
-                -1*phase
-            };
-        
-        const cuFloatComplex amplitude_c = 
-            (cuFloatComplex) 
-            {
-                amp0*amplitude,
-                0.0f
-            };
-        
-        // Calculate strain at current sample_index:
-        waveform_axes_fd.strain.values[offset_index].plus = 
-            cuCmulf(amplitude_c,cudaCExpf(phase_c));
-    
-        // Calcualte plus and cross polarizations:
-        waveform_axes_fd.strain.values[offset_index].cross = 
-            cuCmulf(
-                waveform_axes_fd.strain.values[offset_index].plus, 
-                (cuFloatComplex) {0.0f, -1*cross_factor}
-            );
+    if (thread_index < waveform_axes_fd.frequency.total_num_samples) 
+    {   
+        const int32_t max_num_samples_per_waveform = 
+            waveform_axes_fd.frequency.max_num_samples_per_waveform;
+        const int32_t waveform_index = (int32_t)
+            floorf((float)thread_index / (float)max_num_samples_per_waveform);
+        const int32_t frequency_index = 
+            (int32_t) thread_index % max_num_samples_per_waveform;
             
-        waveform_axes_fd.strain.values[offset_index].plus =
-            cuCmulf(
-                waveform_axes_fd.strain.values[offset_index].plus,
-                (cuFloatComplex) {plus_factor, 0.0}
-            );
+        if (
+            frequency_index < 
+            waveform_axes_fd.frequency.num_samples_in_waveform[waveform_index]
+        ) {
+            const int32_t num_strain_samples = 
+                waveform_axes_fd.strain.max_num_samples_per_waveform;
+                
+            const massUnit_t total_mass =
+                waveform_axes_fd.
+                    system_properties_of[waveform_index].
+                        total_mass;
+                    
+            const phenom_d_variables_s variables = 
+                waveform_axes_fd.
+                    aproximant_variables_of[waveform_index].d;
+
+
+            const int32_t offset = variables.offset;
+
+            const amplitude_coefficients_s amplitude_coefficients =
+                 variables.amplitude_coefficients;
+
+            const amplitude_inspiral_prefactors_s amplitude_prefactors =
+                 variables.amplitude_prefactors;
+
+            const phase_coefficients_s phase_coefficients =
+                 variables.phase_coefficients;
+
+            const phase_inspiral_prefactors_s phase_prefactors =
+                 variables.phase_prefactors;
+
+            const float phase_shift = 
+                variables.phase_shift;
+
+            const useful_powers_s reference_mass_frequnency =
+                variables.powers_of_reference_mass;
+
+            const float amplitude_prefactor_0 = 
+                variables.amplitude_prefactor_0;
+            const float precalculated_phase = 
+                variables.precalculated_phase;
+                
+            // Shift index for frequency series if needed:
+            const int32_t offset_index = 
+                waveform_index*num_strain_samples +
+                frequency_index + offset;
+
+            // Calculate useful powers of mass_frequency value:
+            const useful_powers_s mass_frequency = 
+                _initUsefulPowers(
+                    total_mass.seconds*
+                        waveform_axes_fd.frequency.values[thread_index].hertz
+                );    
+
+            // Calculate amplitude value at current sample index:
+            const float amplitude = 
+                calculateAmplitude(
+                    mass_frequency, 
+                    amplitude_coefficients, 
+                    amplitude_prefactors
+                );
+
+            // Calculate phase value at current sample index:
+            const float phase = 
+                calculatePhase(
+                    mass_frequency, 
+                    phase_coefficients, 
+                    phase_prefactors, 
+                    1.0f, 
+                    1.0f
+                ) 
+                - phase_shift*(mass_frequency.one - reference_mass_frequnency.one) 
+                - precalculated_phase;
+
+            // Convert values to cuFloatComplex:
+            const cuFloatComplex phase_c = 
+                (cuFloatComplex) 
+                {
+                    0.0f,
+                    -1*phase
+                };
+
+            const cuFloatComplex amplitude_c = 
+                (cuFloatComplex) 
+                {
+                    amplitude_prefactor_0*amplitude,
+                    0.0f
+                };
+
+            // Calculate strain at current sample_index
+            
+            waveform_axes_fd.strain.values[offset_index].plus = 
+                cuCmulf(amplitude_c,cudaCExpf(phase_c));
+
+            // Calcualte plus and cross polarizations:
+            waveform_axes_fd.strain.values[offset_index].cross = 
+                cuCmulf(
+                    waveform_axes_fd.strain.values[offset_index].plus, 
+                    (cuFloatComplex) {0.0f, -1*cross_factors[waveform_index]}
+                );
+
+            waveform_axes_fd.strain.values[offset_index].plus =
+                cuCmulf(
+                    waveform_axes_fd.strain.values[offset_index].plus,
+                    (cuFloatComplex) {plus_factors[waveform_index], 0.0}
+                );
+        }
     }    
-    */
 }
 
 extern "C" int32_t sumPhenomDFrequencies(
@@ -1738,12 +1786,12 @@ extern "C" int32_t sumPhenomDFrequencies(
     cudaAllocateDeviceMemory(
         sizeof(float), 
         waveform_axes_fd.num_waveforms,
-        (void**)&cross_factors
+        (void**)&plus_factors
     );
     
     int32_t grid_size = 
     (
-        (waveform_axes_fd.frequency.total_num_samples + BLOCK_SIZE - 1) 
+        (waveform_axes_fd.num_waveforms + BLOCK_SIZE - 1) 
         / BLOCK_SIZE
     );
     
@@ -1752,7 +1800,7 @@ extern "C" int32_t sumPhenomDFrequencies(
         cross_factors, 
         plus_factors
     );
-        
+    
     grid_size = 
         (
             (waveform_axes_fd.frequency.total_num_samples + BLOCK_SIZE - 1) 
@@ -1766,7 +1814,7 @@ extern "C" int32_t sumPhenomDFrequencies(
     );
     
     cudaFree((void*)cross_factors);
-    cudaFree((void*)plus_factors);
+    //cudaFree((void*)plus_factors);
     
     return 0;
 }
@@ -1900,9 +1948,10 @@ __global__ void _initPhenomDVariables(
             );
 
         // Factor of 2 b/c reference_phase is orbital phase:
-        const float precalculated_phase = 2.0f*reference_phase.radians + phase;
+        const float precalculated_phase = 
+            2.0f*reference_phase.radians + phase;
                 
-        phenom_d_variables_s variables = 
+        aproximant_variables_of[waveform_index].d = 
         {
             .offset                   = offset,
             .amplitude_coefficients   = amplitude_coefficients,
@@ -1917,8 +1966,6 @@ __global__ void _initPhenomDVariables(
             .precalculated_phase      = precalculated_phase,
             .phase_shift              = phase_shift
         };
-        
-        aproximant_variables_of[waveform_index].d = variables;
     }
 }
 
@@ -2127,9 +2174,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         );
         
     cudaFree((void*)ringdown_splines); cudaFree((void*)damping_splines); 
-    
-    aproximant_variables_of = NULL;
-    
+        
     // Construct Waveform Axes:
     m_complex_waveform_axes_s complex_waveform_axes = 
     {
