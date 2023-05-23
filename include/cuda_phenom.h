@@ -13,228 +13,18 @@
 #include "phenom_functions.h"
 #include "phenom_d_functions.h"
 
-complex_waveform_axes_s _cuPhenomDGenerateFD(
-    const system_properties_s   *system_properties,
-    const temporal_properties_s *temporal_properties,
-    const int32_t                num_strain_axis_samples
-     //NRTidal_version_type      NRTidal_version               // NRTidal version; either NRTidal_V or NRTidalv2_V or NoNRT_V in case of BBH baseline
-    ) {
-    
-    /*
-     * Internal cuPhenom function to generate IMRPhenomD waveform in the
-     * frequency domain.
-     * @param 
-     * @see 
-     * @return void
-     */
-    
-    // Unpack temporal properties:
-    const frequencyUnit_t starting_frequency  = 
-        temporal_properties[0].starting_frequency;
-    const frequencyUnit_t ending_frequency    = 
-        temporal_properties[0].ending_frequency;
-    const frequencyUnit_t frequency_interval  = 
-        temporal_properties[0].frequency_interval; 
-    const frequencyUnit_t reference_frequency = 
-        temporal_properties[0].reference_frequency;
-        
-    const float   non_gdr_chi_6  = 0.0f;
-    const int32_t tidal_pn_order = -1; 
-    
-    // Unpack system_properties:
-    const massUnit_t    total_mass  = system_properties[0].total_mass;
-    const lengthUnit_t  distance    = system_properties[0].distance;
-    const angularUnit_t inclination = system_properties[0].inclination;
-    // Phase at reference frequency
-    const angularUnit_t reference_phase = 
-        system_properties[0].reference_orbital_phase;    
-            
-    // Check frequency bounds:
-    if (starting_frequency.hertz <= 0.0f)
-    {
-        fprintf(
-            stderr,
-            "%s:\n Error! Starting frequency (%f) Hz must be positive. \n",
-            __func__, 
-            starting_frequency.hertz 
-        );
-    }
-    if (ending_frequency.hertz < 0.0f)
-    {
-        fprintf(
-            stderr,
-            "%s:\n Error! Ending frequency (%f) Hz must not be negative. \n",
-            __func__, 
-            ending_frequency.hertz 
-        );
-    }
-    
-    // Init symmetric mass ratio:
-    float symmetric_mass_ratio = system_properties[0].symmetric_mass_ratio;
-    
-    if (symmetric_mass_ratio > 0.25f)
-    {
-        symmetric_mass_ratio = Nudge(symmetric_mass_ratio, 0.25f, 1.0e-6f);
-    }
-    if (symmetric_mass_ratio > 0.25f || symmetric_mass_ratio < 0.0f)
-    {
-        fprintf(
-            stderr, 
-            "%s:\n"
-            "Unphysical symmetric_mass_ratio. Must be between 0. and 0.25.\n", 
-            __func__
-        );
-    }
-
-    // Compute the amplitude pre-factor:
-    const float amp0 = 
-          2.0f 
-        * sqrtf(5.0f / (64.0f*(float)M_PI)) 
-        * total_mass.meters 
-        * total_mass.seconds/distance.meters;
-    
-    // Calculate index shift between freqs and the frequency series:
-    int32_t offset = 0; 
-    if (frequency_interval.hertz > 0.0f) 
-    { 
-        offset = (int32_t)(starting_frequency.hertz / frequency_interval.hertz);
-    }
-    
-    // Initilise waveform axes:
-    complex_waveform_axes_s waveform_axes_fd =
-        generatePhenomD(
-            temporal_properties,
-            num_strain_axis_samples
-        );
-    
-    // Calculate phenomenological parameters:
-    const float final_spin = calcFinalSpin(system_properties[0]); 
-
-    if (final_spin < MIN_FINAL_SPIN)
-    {
-        fprintf(
-            stderr, 
-            "%s: \n"
-            "Final spin (%f) and ISCO frequency of this system_properties"
-            " are small, the model might misbehave here. \n",
-            __func__, 
-            final_spin
-        );
-    }
-    
-    // Init amplitude coefficients:
-    amplitude_coefficients_s amplitude_coefficients = 
-        initAmplitudeCoefficients(
-            system_properties[0],
-            final_spin
-        );
-    
-    phase_coefficients_s phase_coefficients = 
-        initPhaseCoefficients(
-            system_properties[0], 
-            final_spin
-        );
-    
-    pn_phasing_series_s phasing_series =
-        initTaylorF2AlignedPhasingSeries(system_properties[0], tidal_pn_order);
-    
-    // Subtract 3PN spin-spin term below as this is in LAL's TaylorF2 
-    // implementation.
-    // (LALSimInspiralPNCoefficients.c -> XLALSimInspiralPNPhasing_F2), but was 
-    // not available when PhenomD was tuned.
-    const float testGRcor = 1.0f + non_gdr_chi_6;
-    
-    phasing_series.v[6] -= 
-        subtract3PNSS(system_properties[0])*phasing_series.v[0]*testGRcor;
-    
-    phase_inspiral_prefactors_s phase_prefactors = 
-        initPhaseInspiralPrefactors(phase_coefficients, phasing_series);
-    
-    const float Rholm = 1.0f;
-    const float Taulm = 1.0f;
-    
-    // Compute coefficients to make phase C^1 continuous 
-    // (phase and first derivative):
-    phase_coefficients = 
-        computePhenomDPhaseConnectionCoefficients(
-            phase_coefficients, 
-            phasing_series, 
-            phase_prefactors, 
-            Rholm, 
-            Taulm
-        );
-
-    // Time shift so that peak amplitude is approximately at t=0
-    // For details see:
-    // https://www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/
-    // IMRPhenomDCodeReview/timedomain
-    const float phase_shift = 
-        calculateMergerRingdownPhaseAnsatzDerivitive(
-            amplitude_coefficients.inspiral_merger_peak_frequency, 
-            phase_coefficients, 
-            Rholm, 
-            Taulm
-        );
-
-    const amplitude_inspiral_prefactors_s amplitude_prefactors = 
-        initAmplitudeInspiralPrefactors(amplitude_coefficients);
-
-    // Incorporating reference frequency:
-    const float reference_mass_frequency = 
-        total_mass.seconds * reference_frequency.hertz;
-    useful_powers_s powers_of_reference_mass =
-        initUsefulPowers(reference_mass_frequency);
-    
-    const float phase = 
-        calculatePhase(
-            powers_of_reference_mass, 
-            phase_coefficients, 
-            phase_prefactors,
-            Rholm, 
-            Taulm
-        );
-
-    // Factor of 2 b/c reference_phase is orbital phase:
-    const float precalculated_phase = 2.0f*reference_phase.radians + phase;
-    
-    sumPhenomDFrequenciesOLD(
-        waveform_axes_fd,
-        inclination.radians,
-        total_mass.seconds,
-        amplitude_coefficients,
-        amplitude_prefactors,
-        phase_coefficients, 
-        phase_prefactors, 
-        offset,
-        phase_shift,
-        amp0,
-        reference_mass_frequency,
-        precalculated_phase
-    );
-    
-    // Free frequency axis:
-    cudaFree(waveform_axes_fd.frequency.values);
-    waveform_axes_fd.frequency.values = NULL;
-
-    return waveform_axes_fd;
-}
-
-complex_waveform_axes_s cuPhenomDGenerateFD(
+m_complex_waveform_axes_s cuPhenomDGenerateFD(
     const system_properties_s   *system_properties,
           temporal_properties_s *temporal_properties,
     const int32_t                num_waveforms
     //NRTidal_version_type      NRTidal_version /**< Version of NRTides; can be one of NRTidal versions or NoNRT_V for the BBH baseline */
     ) {
     
-    const frequencyUnit_t reference_frequency = 
-        temporal_properties[0].reference_frequency; 
-    const frequencyUnit_t frequency_interval = 
-        temporal_properties[0].frequency_interval;    
-    const frequencyUnit_t starting_frequency = 
-        temporal_properties[0].starting_frequency;       
-    const frequencyUnit_t old_ending_frequency = 
-        temporal_properties[0].ending_frequency;    
-    
+    const frequencyUnit_t reference_frequency  = temporal_properties[0].reference_frequency; 
+    const frequencyUnit_t frequency_interval   = temporal_properties[0].frequency_interval;    
+    const frequencyUnit_t starting_frequency   = temporal_properties[0].starting_frequency;       
+    const frequencyUnit_t old_ending_frequency = temporal_properties[0].ending_frequency;   
+        
     // Check inputs for sanity:
     if (reference_frequency.hertz < 0.0f)
     {
@@ -278,7 +68,7 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
         );   
     }
     
-    m_complex_waveform_axes_s m_waveform_axes_fd = 
+    m_complex_waveform_axes_s waveform_axes_fd = 
         initPhenomDWaveformAxes(
             temporal_properties,
             system_properties,
@@ -286,8 +76,10 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
         );
         
     sumPhenomDFrequencies(
-        m_waveform_axes_fd
+        waveform_axes_fd
     );
+    
+    /*
             
     const int32_t num_strain_axis_samples =
         m_waveform_axes_fd.strain.max_num_samples_per_waveform;
@@ -312,20 +104,23 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
             //NRTidal_version
         );
         
+    */
+        
     // Coalesce at merger_time = 0:
     // Shift by overall length in time:  
-    waveform_axes_fd.merger_time = initTimeSeconds(0.0f);
-    waveform_axes_fd.merger_time = 
+    waveform_axes_fd.merger_time_for_waveform[0] = \
+        initTimeSeconds(0.0f);
+    waveform_axes_fd.merger_time_for_waveform[0] = 
         addTimes(
             2, 
-            waveform_axes_fd.merger_time, 
+            waveform_axes_fd.merger_time_for_waveform[0], 
             initTimeSeconds(-1.0f / frequency_interval.hertz)
         );
         
     return waveform_axes_fd;
 }
 
-complex_waveform_axes_s cuInspiralFD(
+m_complex_waveform_axes_s cuInspiralFD(
     const system_properties_s   *system_properties,
     const temporal_properties_s *original_temporal_properties,
     const int32_t                num_waveforms,
@@ -345,6 +140,8 @@ complex_waveform_axes_s cuInspiralFD(
             (void*)original_temporal_properties, 
             temporal_array_size
         );
+    
+    // From here 
     
     // Unpack variables:
     frequencyUnit_t old_starting_frequency = 
@@ -492,9 +289,11 @@ complex_waveform_axes_s cuInspiralFD(
     temporal_properties[0].frequency_interval  = frequency_interval;
     temporal_properties[0].starting_frequency  = new_starting_frequency;
     
+    // To here
+    
     // Generate the waveform in the frequency domain starting at 
     // new_starting_frequency:
-    complex_waveform_axes_s waveform_axes_fd;
+    m_complex_waveform_axes_s waveform_axes_fd;
     switch (approximant)
     {
         case D:
@@ -546,22 +345,23 @@ complex_waveform_axes_s cuInspiralFD(
     }
     
     // Assign waveform properties:
-    waveform_axes_fd.frequency.interval = frequency_interval;
-    waveform_axes_fd.time.interval      = time_interval;
+    waveform_axes_fd.frequency.interval_of_waveform[0] = frequency_interval;
+    waveform_axes_fd.time.interval_of_waveform[0]      = time_interval;
 
     if (system_properties[0].ascending_node_longitude > 0.0f) 
     {   
         applyPolarization(
-            waveform_axes_fd,
-            system_properties[0].ascending_node_longitude
+            waveform_axes_fd
         );
     }
+    
+    frequencyUnit_t new_starting_frequencies[] = {{new_starting_frequency.hertz}};
+    frequencyUnit_t old_starting_frequencies[] = {{old_starting_frequency.hertz}};
         
     taperWaveform(
         waveform_axes_fd,
-        new_starting_frequency.hertz,
-        old_starting_frequency.hertz,
-        frequency_interval.hertz
+        new_starting_frequencies,
+        old_starting_frequencies
     );
     
     // We want to make sure that this waveform will give something
@@ -569,13 +369,17 @@ complex_waveform_axes_s cuInspiralFD(
     // to avoid the end of the waveform wrapping around to the beginning,
     // we shift waveform backwards in time and compensate for this
     // shift by adjusting the epoch:
-    performTimeShift(
-          waveform_axes_fd,
+    
+    timeUnit_t time_shifts[] = {
             addTimes(
                 2,
                 temporal_properties[0].merge_time_upper_bound,
                 temporal_properties[0].ringdown_time_upper_bound
-            )
+            )};
+    
+    performTimeShifts(
+        waveform_axes_fd,
+        time_shifts
     );
     
     return waveform_axes_fd;

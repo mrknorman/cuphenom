@@ -16,26 +16,29 @@ int32_t *calcNumStrainAxisSamples(
     const int32_t                num_waveforms
     );
 
-waveform_axes_s inclinationAdjust(
+m_waveform_axes_s inclinationAdjust(
     const system_properties_s system_properties,
-          waveform_axes_s      waveform_axes_td
+          m_waveform_axes_s      waveform_axes_td
     );
 
-waveform_axes_s polarisationRotation(
+m_waveform_axes_s polarisationRotation(
     const float           polarization,
-          waveform_axes_s waveform_axes_td
+          m_waveform_axes_s waveform_axes_td
     );
 
 int32_t applyPolarization(
-    const complex_waveform_axes_s waveform_axes,
-    const float                   polarization
+    const m_complex_waveform_axes_s waveform_axes
     );
 
 int32_t taperWaveform(
-    const complex_waveform_axes_s waveform_axes,
-    const float                   starting_frequency,
-    const float                   minimum_frequency,
-    const float                   frequency_interval
+    const m_complex_waveform_axes_s  waveform_axes,
+    const frequencyUnit_t           *starting_frequency,
+    const frequencyUnit_t           *minimum_frequency
+    );
+
+int32_t performTimeShifts(
+          m_complex_waveform_axes_s  waveform_axes,
+    const timeUnit_t                *shift_duration
     );
 
 static void checkSystemParameters(
@@ -279,11 +282,6 @@ system_properties_s initBinarySystem(
     
     return system_properties;
 }
-
-int32_t performTimeShift(
-          complex_waveform_axes_s waveform_axes,
-    const timeUnit_t              shift_duration
-    );
 
 inline float TaylorT2Timing_0PNCoeff(
     const massUnit_t total_mass,
@@ -619,24 +617,57 @@ temporal_properties_s initTemporalProperties(
     return temporal_properties;
 }
 
-waveform_axes_s convertWaveformFDToTD(
-    const complex_waveform_axes_s waveform_axes_fd
+m_waveform_axes_s convertWaveformFDToTD(
+    const m_complex_waveform_axes_s waveform_axes_fd
     ) {
     
-    const int32_t num_td_samples = 
-        2 * (waveform_axes_fd.strain.num_samples - 1);
-        
-    waveform_axes_s waveform_axes_td;
-    waveform_axes_td.time.interval = waveform_axes_fd.time.interval;
-    waveform_axes_td.strain.num_samples = num_td_samples;
-    waveform_axes_td.strain.values = NULL;
+    for (int32_t index = 0;
     
-    cudaInterlacedIRFFT(
-        num_td_samples,
-	    (float)num_td_samples * waveform_axes_fd.time.interval.seconds,
-        (cuFloatComplex*) waveform_axes_fd.strain.values,
-        (float**)&waveform_axes_td.strain.values
+    const int32_t num_waveforms = waveform_axes_fd.num_waveforms;
+    const float *num_samples_in_waveform_td = 
+        waveform_axes_fd.strain.num_samples_in_waveform;
+    
+    // Get new num_samples_per waveform:
+    hostCudaAddValue(
+        num_samples_in_waveform_td, 
+        -1.0, 
+        num_waveforms
     );
+    hostCudaMultiplyByValue(
+        num_samples_in_waveform_td, 
+        2.0, 
+        num_waveforms
+    );
+    
+    const int32_t max_num_samples_in_waveform_td =
+        2*(waveform_axes_fd.strain.max_num_samples_per_waveform - 1);
+        
+    const int32_t total_num_samples_td = 
+        max_num_samples_in_waveform*num_waveforms;
+                
+    m_waveform_axes_s waveform_axes_td;
+    waveform_axes_td.merger_time_for_waveform = 
+        waveform_axes_fd.merger_time_for_waveform;
+    waveform_axes_td.time = 
+        waveform_axes_fd.time;
+    waveform_axes_td.strain =
+        (m_strain_array_s){
+            .values                       = NULL,
+            .num_samples_in_waveform      = num_samples_in_waveform_td,
+            .max_num_samples_per_waveform = max_num_samples_in_waveform_td,
+            .total_num_samples            = total_num_samples_td
+        };
+
+    
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        cudaInterlacedIRFFT(
+            num_td_samples,
+            (float)num_td_samples * waveform_axes_fd.time.interval.seconds,
+            (cuFloatComplex*) waveform_axes_fd.strain.values,
+            (float**)&waveform_axes_td.strain.values
+        );
+    }
     
     cudaFree(waveform_axes_fd.strain.values);
     
@@ -647,9 +678,7 @@ waveform_axes_s convertWaveformFDToTD(
 // This function is tested in ../test/PNCoefficients.c for consistency
 // with the energy and flux in this file.
 
-
 // Taylor coefficients:
-
 inline float TaylorF2Phasing_2PNCoeff(
     const float eta
     ) {
