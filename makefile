@@ -28,4 +28,6 @@ OBJ_NAME   = ./bin/main.out
 #This is the target that compiles our executable
 all : $(OBJS)
 	$(CC) $(OBJS) -pg -lcurand -g -lcufft $(INCLUDE) $(PYTHON_INCLUDE) $(LAL_INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LAL_LINK) $(PYTHON_LINK) $(LINKER_FLAGS) -o $(OBJ_NAME)
+shared :	
+	$(CC) $(OBJS) -shared -fPIC  -pg -lcurand -g -lcufft $(INCLUDE) $(PYTHON_INCLUDE) $(LAL_INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LAL_LINK) $(PYTHON_LINK) $(LINKER_FLAGS) -o ./python/libphenom.so
 	

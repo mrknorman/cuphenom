@@ -1814,7 +1814,7 @@ extern "C" int32_t sumPhenomDFrequencies(
     );
     
     cudaFree((void*)cross_factors);
-    //cudaFree((void*)plus_factors);
+    cudaFree((void*)plus_factors);
     
     return 0;
 }

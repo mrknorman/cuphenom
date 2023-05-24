@@ -288,9 +288,24 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
     sumPhenomDFrequencies(
         m_waveform_axes_fd
     );
-            
+                
     const int32_t num_strain_axis_samples =
         m_waveform_axes_fd.strain.max_num_samples_per_waveform;
+        
+    cudaFree(m_waveform_axes_fd.strain.values);
+    cudaFree(m_waveform_axes_fd.strain.num_samples_in_waveform);
+    cudaFree(m_waveform_axes_fd.aproximant_variables_of);
+    cudaFree(m_waveform_axes_fd.system_properties_of);
+    cudaFree(m_waveform_axes_fd.temporal_properties_of);
+    cudaFree(m_waveform_axes_fd.merger_time_for_waveform);
+        
+    cudaFree(m_waveform_axes_fd.frequency.values);
+    cudaFree(m_waveform_axes_fd.frequency.interval_of_waveform);
+    cudaFree(m_waveform_axes_fd.frequency.num_samples_in_waveform);
+    
+    cudaFree(m_waveform_axes_fd.time.values);
+    cudaFree(m_waveform_axes_fd.time.interval_of_waveform);
+    cudaFree(m_waveform_axes_fd.time.num_samples_in_waveform);
     
     // Update temporal properties: (OLD REPLACE WITH GPU SIDE CALCULATION)
     temporal_properties[0].reference_frequency = 
@@ -578,6 +593,8 @@ complex_waveform_axes_s cuInspiralFD(
             )
     );
     
+    free(temporal_properties);
+    
     return waveform_axes_fd;
 }
 
@@ -686,7 +703,11 @@ waveform_axes_s generateInspiral(
         break;
 
         default:
-            printf("Aproximant not supported! \n");
+            printf(
+                "%s:\n"
+                "Aproximant (%i) not supported! Need = %i \n",
+                __func__, (int) approximant, (int)D
+                );
         break;
     }
     
@@ -719,7 +740,11 @@ waveform_axes_s generateInspiral(
         break;
 
         default:
-            printf("Aproximant not supported! \n");
+            printf(
+                "%s:\n"
+                "Aproximant (%i) not supported! \n",
+                __func__, (int) approximant
+            );
         break;
     }
     

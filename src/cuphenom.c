@@ -8,7 +8,6 @@
 
 #include "./py_tools/py_tools.h"
 #include "units.h"
-
 #include "io_tools/console.h"
 
 frequencyUnit_t calcMinimumFrequency(
@@ -66,6 +65,7 @@ frequencyUnit_t calcMinimumFrequency2(
 
 #include "cuda_phenom.h"
 #include "lal_phenom.h"
+#include "python_interface.h"
 
 #ifdef ZOMBIE
 #include "zombie_phenom.h"
@@ -379,7 +379,7 @@ int32_t testRunTime(
     const lengthUnit_t    distance,
 	const int32_t         num_tests
 	) {
-	
+        
 	float2_t *strain = NULL;
 	
 	float execution_time_lal = 0.0, execution_time_cuda = 0.0;
