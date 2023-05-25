@@ -433,8 +433,8 @@ int32_t testRunTime(
 
 
 int32_t main(){
-	const float mass_1_msun         =   10.0f;
-    const float mass_2_msun         =   10.0f;
+	const float mass_1_msun         =   30.0f;
+    const float mass_2_msun         =   30.0f;
     const float sample_rate_hertz   = 8192.0f;
     const float duration_seconds    =    1.0f;
     const float inclination_radians =    1.0f;
