@@ -10,7 +10,7 @@ from tqdm import tqdm
 import time
 import random
 
-def test_generatePhenom():
+def test_generate_phenom():
     # Define reasonable input parameters for an average gravitational wave
     approximant_enum = 1
     mass_1_msun = 10
@@ -72,7 +72,7 @@ def test_generatePhenom():
     # Show the results
     show(p)
 
-def speed_test_generatePhenom(num_tests=100):
+def speed_test_generate_phenom(num_tests=100):
 
     # Prepare data storage for bokeh
     times = []
@@ -98,7 +98,7 @@ def speed_test_generatePhenom(num_tests=100):
         start_time = time.time()
 
         # Call generatePhenom function
-        result = generatePhenom(
+        result = generate_phenom(
             approximant_enum,
             mass_1_msun,
             mass_2_msun,
@@ -142,5 +142,7 @@ def speed_test_generatePhenom(num_tests=100):
     # Show the results
     show(p)
 
-# Call the test function
-speed_test_generatePhenom(num_tests=1000000)
+if __name__ == "__main__":
+    
+    # Call the test function
+    speed_test_generate_phenom(num_tests=1000000)
