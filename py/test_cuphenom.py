@@ -13,11 +13,11 @@ import random
 def test_generatePhenom():
     # Define reasonable input parameters for an average gravitational wave
     approximant_enum = 1
-    mass_1_msun = 10
-    mass_2_msun = 10
+    mass_1_msun = 30
+    mass_2_msun = 30
     sample_rate_hertz = 4096
     duration_seconds = 4.0
-    inclination_radians = np.pi / 2
+    inclination_radians = 1.0
     distance_mpc = 100.0
     reference_orbital_phase_in = 0.0
     ascending_node_longitude = 100.0
@@ -143,4 +143,5 @@ def speed_test_generatePhenom(num_tests=100):
     show(p)
 
 # Call the test function
-speed_test_generatePhenom(num_tests=1000000)
+test_generatePhenom()
+#speed_test_generatePhenom(num_tests=1000000)
