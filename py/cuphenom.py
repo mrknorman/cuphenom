@@ -112,7 +112,7 @@ def randomise_arguments(input_dict, func):
         
         output_dict[key] = random_values if num_values > 1 else random_values[0]
 
-    return func(**output_dict)
+    return func(**output_dict), output_dict
     
     
     
