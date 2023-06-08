@@ -6,6 +6,7 @@
 #include <curand.h>
 #include <cufft.h>
 #include <cuda_fp16.h>
+#include <complex.h>
 
 #include "phenom_d_data.h"
 
