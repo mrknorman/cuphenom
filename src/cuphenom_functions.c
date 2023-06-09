@@ -35,5 +35,4 @@ frequencyUnit_t calcMinimumFrequency(
 }
 
 #include "cuda_phenom.h"
-#include "lal_phenom.h"
 #include "python_interface.h"

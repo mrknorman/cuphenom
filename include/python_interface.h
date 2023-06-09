@@ -19,7 +19,7 @@ float *pythonWrapperPhenomD(
     const float *spin_2_in
     ) {
     
-    Approximant approximant = D; 
+    approximant_e approximant = D; 
     
     const massUnit_t      mass_1       = initMassSolarMass(mass_1_msun);
     const massUnit_t      mass_2       = initMassSolarMass(mass_2_msun);

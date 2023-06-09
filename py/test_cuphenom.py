@@ -1,4 +1,4 @@
-from cuphenom import generatePhenom
+from cuphenom import generate_phenom
 import numpy as np
 
 from bokeh.layouts import gridplot
@@ -27,7 +27,7 @@ def test_generate_phenom():
     spin_2_in = [0.0, 0.0, 0.0]
 
     # Call generatePhenom function
-    result = generatePhenom(
+    result = generate_phenom(
         approximant_enum,
         mass_1_msun,
         mass_2_msun,
