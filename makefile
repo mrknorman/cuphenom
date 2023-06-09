@@ -31,4 +31,6 @@ all : $(OBJS)
 	$(CC) $(OBJS) -pg -lcurand -g -lcufft $(INCLUDE) $(PYTHON_INCLUDE) $(LAL_INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LAL_LINK) $(PYTHON_LINK) $(LINKER_FLAGS) -o $(OBJ_NAME)
 shared :	
 	$(CC) ./src/cuphenom_functions.c ./src/cuda_functions.cu -shared -fPIC  -pg -lcurand -g -lcufft $(INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LINKER_FLAGS) $(MKL_LINK) -o ./py/libphenom.so
+test :	
+	$(CC) ./src/test_cuda.c ./src/cuda_functions.cu -pg -lcurand -g -lcufft $(INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LINKER_FLAGS) $(MKL_LINK) -o ./bin/test_cuda.out
 	
