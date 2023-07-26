@@ -78,33 +78,6 @@ m_complex_waveform_axes_s cuPhenomDGenerateFD(
     sumPhenomDFrequencies(
         waveform_axes_fd
     );
-    
-    /*
-            
-    const int32_t num_strain_axis_samples =
-        m_waveform_axes_fd.strain.max_num_samples_per_waveform;
-    
-    // Update temporal properties: (OLD REPLACE WITH GPU SIDE CALCULATION)
-    temporal_properties[0].reference_frequency = 
-        initFrequencyHertz(        
-            (reference_frequency.hertz == 0.0f) ? 
-            starting_frequency.hertz : reference_frequency.hertz
-        );     
-    
-    temporal_properties[0].ending_frequency = 
-        initFrequencyHertz(
-            f_CUT/system_properties[0].total_mass.seconds
-        );
-        
-    complex_waveform_axes_s waveform_axes_fd = 
-        _cuPhenomDGenerateFD(
-            system_properties,
-            temporal_properties,
-            num_strain_axis_samples
-            //NRTidal_version
-        );
-        
-    */
         
     // Coalesce at merger_time = 0:
     // Shift by overall length in time:  
@@ -385,7 +358,7 @@ m_complex_waveform_axes_s cuInspiralFD(
     return waveform_axes_fd;
 }
 
-waveform_axes_s cuInspiralTDFromFD(
+m_waveform_axes_s cuInspiralTDFromFD(
           system_properties_s   *system_properties,
           temporal_properties_s *temporal_properties,
     const int32_t                num_waveforms,
@@ -396,7 +369,7 @@ waveform_axes_s cuInspiralTDFromFD(
     // factor has already been applied above set frequency_interval = 0 to get a 
     // small enough resolution:
     temporal_properties[0].frequency_interval = initFrequencyHertz(0.0f);
-    complex_waveform_axes_s waveform_axes_fd =
+    m_complex_waveform_axes_s waveform_axes_fd =
         cuInspiralFD(
             system_properties,
             temporal_properties,
@@ -409,12 +382,17 @@ waveform_axes_s cuInspiralTDFromFD(
     // to avoid the end of the waveform wrapping around to the beginning,
     // we shift waveform backwards in time and compensate for this
     // shift by adjusting the epoch:
-    performTimeShift(
-        waveform_axes_fd,
+    
+    timeUnit_t time_shifts[] = {
         temporal_properties[0].extra_time
+    };
+    
+    performTimeShifts(
+        waveform_axes_fd,
+        time_shifts
     );
         
-    waveform_axes_s waveform_axes_td = 
+    m_waveform_axes_s waveform_axes_td = 
         convertWaveformFDToTD(
             waveform_axes_fd
         );         
@@ -452,12 +430,12 @@ waveform_axes_s cuInspiralTDFromFD(
         );
     
     // Snip off extra time at the end of waveform:
-    waveform_axes_td.strain.num_samples -= num_extra_samples;
+    waveform_axes_td.strain.num_samples_in_waveform[0] -= (float)num_extra_samples;
            
     return waveform_axes_td;
 }
 
-waveform_axes_s generateInspiral(
+m_waveform_axes_s generateInspiral(
     system_properties_s   *system_properties,
     temporal_properties_s *temporal_properties, 
     const int32_t          num_waveforms,
@@ -495,7 +473,7 @@ waveform_axes_s generateInspiral(
     }
     
     // Generate the waveform in the time domain starting at starting frequency:
-    waveform_axes_s waveform_axes_td = 
+    m_waveform_axes_s waveform_axes_td = 
         cuInspiralTDFromFD(
             system_properties,
             temporal_properties,
@@ -511,7 +489,6 @@ waveform_axes_s generateInspiral(
         case D:                        
             // Apply inclination-dependent factors:
             ;waveform_axes_td = inclinationAdjust(
-                system_properties[0],
                 waveform_axes_td
             );
             break;
@@ -642,7 +619,7 @@ void generatePhenomCUDA(
             );
     }
     
-    waveform_axes_s waveform_axes_td = 
+    m_waveform_axes_s waveform_axes_td = 
         generateInspiral(
             system_properties,
             temporal_properties,
@@ -652,14 +629,15 @@ void generatePhenomCUDA(
     
     float2_t *strain = NULL;
     cudaToHost(
-        (void**)&waveform_axes_td.strain.values[waveform_axes_td.strain.num_samples - num_samples - 1], 
+        (void**)&waveform_axes_td.strain.values[
+        (int32_t)waveform_axes_td.strain.num_samples_in_waveform[0] - num_samples - 1], 
         sizeof(float2_t),
         num_samples,
         (void**) &strain
     );
     cudaFree(waveform_axes_td.strain.values);
         
-    if (waveform_axes_td.strain.num_samples < num_samples) 
+    if (waveform_axes_td.strain.num_samples_in_waveform[0] < num_samples) 
     {    
         fprintf(
             stderr, 

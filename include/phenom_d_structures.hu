@@ -145,25 +145,11 @@ typedef struct
 typedef struct
 {
     frequencyUnit_t *values;
-    frequencyUnit_t  interval;
-    int32_t          num_samples;
-} frequency_array_s;
-
-typedef struct
-{
-    frequencyUnit_t *values;
     frequencyUnit_t *interval_of_waveform;
     float           *num_samples_in_waveform;
     int32_t          max_num_samples_per_waveform;
     int32_t          total_num_samples;
 } m_frequency_array_s;
-
-typedef struct
-{
-    timeUnit_t *values;
-    timeUnit_t  interval;
-    int32_t     num_samples;
-} time_array_s;
 
 typedef struct
 {
@@ -177,12 +163,6 @@ typedef struct
 typedef struct
 {
     complex_strain_element_c *values;
-    int32_t                   num_samples;
-} complex_strain_array_s;
-
-typedef struct
-{
-    complex_strain_element_c *values;
     float                    *num_samples_in_waveform;
     int32_t                   max_num_samples_per_waveform;
     int32_t                   total_num_samples;
@@ -191,16 +171,10 @@ typedef struct
 typedef struct
 {
     strain_element_t *values;
-    int32_t           num_samples;
-} strain_array_s;
-
-typedef struct
-{
-    timeUnit_t             merger_time;
-    frequency_array_s      frequency;
-    time_array_s           time;
-    complex_strain_array_s strain;
-} complex_waveform_axes_s;
+    float            *num_samples_in_waveform;
+    int32_t           max_num_samples_per_waveform;
+    int32_t           total_num_samples;
+} m_strain_array_s;
 
 // Useful powers in GW waveforms: 1/6, 1/3, 2/3, 4/3, 5/3, 2, 7/3, 8/3, -1, 
 // -1/6, -7/6, -1/3, -2/3, -5/3 calculated using only one invocation of 'pow', 
@@ -363,10 +337,14 @@ typedef struct
 
 typedef struct
 {
-    timeUnit_t     merger_time;
-    time_array_s   time;
-    strain_array_s strain;
-} waveform_axes_s;
+    timeUnit_t               *merger_time_for_waveform;
+    m_time_array_s            time;
+    m_strain_array_s          strain;
+    temporal_properties_s    *temporal_properties_of;
+    system_properties_s      *system_properties_of;
+    aproximant_variables_s   *aproximant_variables_of;
+    int32_t                   num_waveforms;
+} m_waveform_axes_s;
 
 #endif
 

@@ -17,8 +17,7 @@ int32_t *calcNumStrainAxisSamples(
     );
 
 m_waveform_axes_s inclinationAdjust(
-    const system_properties_s system_properties,
-          m_waveform_axes_s      waveform_axes_td
+    m_waveform_axes_s waveform_axes_td
     );
 
 m_waveform_axes_s polarisationRotation(
@@ -621,10 +620,8 @@ m_waveform_axes_s convertWaveformFDToTD(
     const m_complex_waveform_axes_s waveform_axes_fd
     ) {
     
-    for (int32_t index = 0;
-    
     const int32_t num_waveforms = waveform_axes_fd.num_waveforms;
-    const float *num_samples_in_waveform_td = 
+    float *num_samples_in_waveform_td = 
         waveform_axes_fd.strain.num_samples_in_waveform;
     
     // Get new num_samples_per waveform:
@@ -643,7 +640,7 @@ m_waveform_axes_s convertWaveformFDToTD(
         2*(waveform_axes_fd.strain.max_num_samples_per_waveform - 1);
         
     const int32_t total_num_samples_td = 
-        max_num_samples_in_waveform*num_waveforms;
+        max_num_samples_in_waveform_td*num_waveforms;
                 
     m_waveform_axes_s waveform_axes_td;
     waveform_axes_td.merger_time_for_waveform = 
@@ -657,17 +654,20 @@ m_waveform_axes_s convertWaveformFDToTD(
             .max_num_samples_per_waveform = max_num_samples_in_waveform_td,
             .total_num_samples            = total_num_samples_td
         };
-
     
-    for (int32_t index = 0; index < num_waveforms; index++)
-    {
-        cudaInterlacedIRFFT(
-            num_td_samples,
-            (float)num_td_samples * waveform_axes_fd.time.interval.seconds,
-            (cuFloatComplex*) waveform_axes_fd.strain.values,
-            (float**)&waveform_axes_td.strain.values
-        );
-    }
+    waveform_axes_td.temporal_properties_of  = waveform_axes_fd.temporal_properties_of;
+    waveform_axes_td.system_properties_of    = waveform_axes_fd.system_properties_of;
+    waveform_axes_td.aproximant_variables_of = waveform_axes_fd.aproximant_variables_of;
+    waveform_axes_td.num_waveforms           = waveform_axes_fd.num_waveforms;
+    
+    cudaBatchInterlacedIRFFT(
+        waveform_axes_fd.strain.max_num_samples_per_waveform,
+        num_waveforms,
+        (float)max_num_samples_in_waveform_td 
+              *waveform_axes_fd.time.interval_of_waveform[0].seconds, // Assume all waveforms have same time interval
+        (cuFloatComplex*) waveform_axes_fd.strain.values,
+        (float**)&waveform_axes_td.strain.values
+    );
     
     cudaFree(waveform_axes_fd.strain.values);
     

@@ -1,4 +1,4 @@
-x#ifndef PHENOM_FUNCTIONS_HU
+#ifndef PHENOM_FUNCTIONS_HU
 #define PHENOM_FUNCTIONS_HU
 
 #define BLOCK_SIZE 256
@@ -280,7 +280,7 @@ __device__ pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
 
 
 __global__ void _convertDurationsIntoSamples(
-    const m_complex_waveform_axis_s *waveform_axes,
+    const m_complex_waveform_axes_s  waveform_axes,
     const timeUnit_t                *shift_durations,
           float                     *num_samples_time_shift
     ) {
@@ -291,7 +291,7 @@ __global__ void _convertDurationsIntoSamples(
     if (waveform_index < waveform_axes.num_waveforms)
     {
         const timeUnit_t time_interval = 
-            waveform_axes_fd.time.interval_of_waveform[waveform_index];
+            waveform_axes.time.interval_of_waveform[waveform_index];
             
         num_samples_time_shift[waveform_index] = 
             roundf(
@@ -354,18 +354,18 @@ __global__ void _performTimeShifts(
 }
 
 extern "C" int32_t performTimeShifts(
-          m_complex_waveform_axes_s  waveform_axes_fd,
+          m_complex_waveform_axes_s  waveform_axes,
     const timeUnit_t                *shift_durations
     ) {
     
     int32_t grid_size = 
-        ((waveform_axes_fd.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
     float *num_samples_time_shift = NULL;
     cudaAllocateDeviceMemory(
         waveform_axes.num_waveforms,
         sizeof(float),
-        (void**)&num_samples_time_shift,
+        (void**)&num_samples_time_shift
     );
     
     _convertDurationsIntoSamples<<<grid_size,BLOCK_SIZE>>>(
@@ -375,10 +375,10 @@ extern "C" int32_t performTimeShifts(
     );
     
     grid_size = 
-        ((waveform_axes_fd.strain.total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        ((waveform_axes.strain.total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
     _performTimeShifts<<<grid_size,BLOCK_SIZE>>>(
-        waveform_axes_fd,
+        waveform_axes,
         num_samples_time_shift
     );
     
@@ -391,6 +391,31 @@ extern "C" int32_t performTimeShifts(
 }
 
 __global__ void initFrequencyArray(
+              frequency_array_s frequency_array, 
+        const int32_t           start_index, 
+        const int32_t           end_index, 
+        const frequencyUnit_t   frequency_interval
+    ) {
+    
+    /**
+     * Init frequency array:
+     * @param 
+     * @see 
+     * @return void
+     */
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // If not outside array bounds, add value toa array element:
+    if (sample_index < frequency_array.num_samples) 
+	{    
+        frequency_array.values[sample_index].hertz = 
+            (sample_index+start_index)*frequency_interval.hertz;
+    }    
+}
+
+__global__ void initFrequencyArrays(
               frequency_array_s frequency_array, 
         const int32_t           start_index, 
         const int32_t           end_index, 
@@ -441,26 +466,52 @@ __device__ __forceinline__ useful_powers_s _initUsefulPowers(
     return powers;
 }
 
-__global__ void _inclinationAdjust(
-          strain_array_s strain,
-    const float          cross_factor,
-    const float          plus_factor
+__global__ void _calculateInclinationFactors(
+          m_waveform_axes_s    waveform_axes,
+          float               *cross_factor_array,
+          float               *plus_factor_array,
     ) {
     
     // Assign unique thread index for GPU calculation:
-    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
     
     // If not outside array bounds, add value toa array element:
-    if (sample_index < strain.num_samples) 
+    if (waveform_index < waveform_axes.num_waveforms) 
 	{    
-        strain.values[sample_index].plus  *= plus_factor;
-        strain.values[sample_index].cross *= cross_factor;
+        const angularUnit_t inclination = system_properties[waveform_index].inclination;
+        
+        const int32_t cross_factor = cosf(inclination.radians);
+        cross_factor_array[waveform_index] = cross_factor;
+        plus_factor_array[waveform_index]  = 0.5f * (1.0f + cross_factor*cross_factor);
+    }
+}
+
+__global__ void _inclinationAdjust(
+          m_waveform_axes_s  waveform_axes,
+    const float             *cross_factor_array,
+    const float             *plus_factor_array
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t thread_index = 
+        blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t max_num_samples_per_waveform = 
+        waveform_axes.strain.max_num_samples_per_waveform;
+    const int32_t waveform_index = (int32_t)
+        floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t sample_index = 
+        (int32_t) thread_index % max_num_samples_per_waveform;
+    
+    // If not outside array bounds, add value toa array element:
+    if (thread_index < waveform_axes_td.strain.total_num_samples) 
+	{    
+        waveform_axes.strain.values[thread_index].plus         *= plus_factor_array[waveform_index];
+        waveform_axes.strain.values.values[thread_index].cross *= cross_factor_array[waveform_index];
     }    
 }
 
 extern "C" waveform_axes_s inclinationAdjust(
-    const system_properties_s system_properties,
-          waveform_axes_s     waveform_axes_td
+          waveform_axes_s waveform_axes
     ) {
     
     /*
@@ -484,19 +535,38 @@ extern "C" waveform_axes_s inclinationAdjust(
     //XLALGPSSetREAL8(&(hc->epoch), -1.0*temporal_properties.time_interval.seconds * max_index);    
     */
     
-    const float cross_factor = cosf(system_properties.inclination.radians);
-    const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
-    
-    const int32_t grid_size = 
-        ((waveform_axes_td.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    
-     _inclinationAdjust<<<grid_size, BLOCK_SIZE>>>(
-        waveform_axes_td.strain,
-        cross_factor,
-        plus_factor
+    float *cross_factor_array;
+    cudaAllocateDeviceMemory(
+        waveform_axes.num_waveforms,
+        sizeof(float),
+        (void**)&cross_factor_array,
+    );
+    float *plus_factor_array;
+    cudaAllocateDeviceMemory(
+        waveform_axes.num_waveforms,
+        sizeof(float),
+        (void**)&plus_factor_array,
     );
     
-    return waveform_axes_td;
+    _calculateInclinationFactors(
+         waveform_axes,
+         cross_factor_array,
+         plus_factor_array,
+    );
+    
+    const int32_t grid_size = 
+        ((waveform_axes.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        
+     _inclinationAdjust<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes,
+        cross_factor_array,
+        plus_factor_array
+    );
+    
+    cudaFree(cross_factor_array);
+    cudaFree(plus_factor_array);
+    
+    return waveform_axes;
 }
 
 __global__ void _polarisationRotation(

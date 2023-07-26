@@ -342,9 +342,13 @@ typedef struct
 
 typedef struct
 {
-    timeUnit_t       *merger_time_for_waveform;
-    m_time_array_s    time;
-    m_strain_array_s  strain;
+    timeUnit_t               *merger_time_for_waveform;
+    m_time_array_s            time;
+    m_strain_array_s          strain;
+    temporal_properties_s    *temporal_properties_of;
+    system_properties_s      *system_properties_of;
+    aproximant_variables_s   *aproximant_variables_of;
+    int32_t                   num_waveforms;
 } m_waveform_axes_s;
 
 #endif

@@ -1,6 +1,7 @@
 ### C ###
 # Prerequisites
 *.d
+*compute_sanitiser*
 
 # Object files
 *.o

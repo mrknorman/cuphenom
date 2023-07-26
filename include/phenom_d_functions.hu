@@ -2123,12 +2123,21 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         total_num_frequency_axis_samples,
         (void**)&frequency_axis_values
     );
-    
+        
     frequencyUnit_t *frequency_interval_of_waveform = NULL;
     cudaCallocateDeviceMemory(
         sizeof(timeUnit_t), 
         num_waveforms,
         (void**)&frequency_interval_of_waveform
+    );
+    
+    printf("needs to be added \n");
+    
+    initFrequencyArray<<<grid_size, BLOCK_SIZE>>>(
+        frequency_array, 
+        start_index, 
+        end_index, 
+        frequency_interval
     );
         
     m_frequency_array_s frequency_axis = 
