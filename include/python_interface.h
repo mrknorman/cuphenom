@@ -103,7 +103,7 @@ float *pythonWrapperPhenomD(
             );
     }
     
-    waveform_axes_s waveform_axes_td = 
+    m_waveform_axes_s waveform_axes_td = 
         generateInspiral(
             system_properties,
             temporal_properties,
@@ -111,6 +111,7 @@ float *pythonWrapperPhenomD(
             approximant
         );
     
+    /* MUST BE UPDATED FOR BATCH CASE
     float2_t *strain = NULL;
     cudaToHost(
         (void**)&waveform_axes_td.strain.values[waveform_axes_td.strain.num_samples - num_samples - 1], 
@@ -140,6 +141,11 @@ float *pythonWrapperPhenomD(
     free(strain);
         
     return test_array;
+    */
+    
+    float *blank_arrray = calloc(1, sizeof(float));
+    
+    return blank_arrray;
 }
 
 #endif

@@ -1,11 +1,6 @@
 #ifndef PHENOM_D_FUNCTIONS_H
 #define PHENOM_D_FUNCTIONS_H
 
-m_complex_waveform_axes_s generatePhenomD(
-    const temporal_properties_s *temporal_properties,
-    const int32_t                num_strain_axis_samples
-    );
-
 m_complex_waveform_axes_s initPhenomDWaveformAxes(
           temporal_properties_s *temporal_properties,
     const system_properties_s   *system_properties,

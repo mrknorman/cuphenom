@@ -390,6 +390,7 @@ extern "C" int32_t performTimeShifts(
     return 0;
 }
 
+/*
 __global__ void initFrequencyArray(
               frequency_array_s frequency_array, 
         const int32_t           start_index, 
@@ -397,12 +398,11 @@ __global__ void initFrequencyArray(
         const frequencyUnit_t   frequency_interval
     ) {
     
-    /**
-     * Init frequency array:
-     * @param 
-     * @see 
-     * @return void
-     */
+    
+    // Init frequency array:
+    // @param 
+    // @see 
+    // @return void
     
     // Assign unique thread index for GPU calculation:
     const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -422,12 +422,11 @@ __global__ void initFrequencyArrays(
         const frequencyUnit_t   frequency_interval
     ) {
     
-    /**
-     * Init frequency array:
-     * @param 
-     * @see 
-     * @return void
-     */
+
+     // Init frequency array:
+     // @param 
+     // @see 
+     // @return void
     
     // Assign unique thread index for GPU calculation:
     const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -439,6 +438,7 @@ __global__ void initFrequencyArrays(
             (sample_index+start_index)*frequency_interval.hertz;
     }    
 }
+*/
 
 __device__ __forceinline__ useful_powers_s _initUsefulPowers(
     const float one
@@ -467,18 +467,20 @@ __device__ __forceinline__ useful_powers_s _initUsefulPowers(
 }
 
 __global__ void _calculateInclinationFactors(
-          m_waveform_axes_s    waveform_axes,
+    const m_waveform_axes_s    waveform_axes,
           float               *cross_factor_array,
-          float               *plus_factor_array,
+          float               *plus_factor_array
     ) {
     
     // Assign unique thread index for GPU calculation:
     const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
     
+    system_properties_s *system_properties_of = waveform_axes.system_properties_of;
+    
     // If not outside array bounds, add value toa array element:
     if (waveform_index < waveform_axes.num_waveforms) 
 	{    
-        const angularUnit_t inclination = system_properties[waveform_index].inclination;
+        const angularUnit_t inclination = system_properties_of[waveform_index].inclination;
         
         const int32_t cross_factor = cosf(inclination.radians);
         cross_factor_array[waveform_index] = cross_factor;
@@ -503,18 +505,20 @@ __global__ void _inclinationAdjust(
         (int32_t) thread_index % max_num_samples_per_waveform;
     
     // If not outside array bounds, add value toa array element:
-    if (thread_index < waveform_axes_td.strain.total_num_samples) 
-	{    
-        waveform_axes.strain.values[thread_index].plus         *= plus_factor_array[waveform_index];
-        waveform_axes.strain.values.values[thread_index].cross *= cross_factor_array[waveform_index];
+    if (
+           (thread_index < waveform_axes.strain.total_num_samples) 
+        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+    ) {
+        waveform_axes.strain.values[thread_index].plus  *= plus_factor_array[waveform_index];
+        waveform_axes.strain.values[thread_index].cross *= cross_factor_array[waveform_index];
     }    
 }
 
-extern "C" waveform_axes_s inclinationAdjust(
-          waveform_axes_s waveform_axes
+extern "C" m_waveform_axes_s inclinationAdjust(
+          m_waveform_axes_s waveform_axes
     ) {
     
-    /*
+    /* ADD BACK IN FOR GPS TIME OF MERGER
     float   max_amplitude = 0.0f;
     int32_t max_index     = waveform_axes_td.strain.num_samples - 1;
     
@@ -535,27 +539,30 @@ extern "C" waveform_axes_s inclinationAdjust(
     //XLALGPSSetREAL8(&(hc->epoch), -1.0*temporal_properties.time_interval.seconds * max_index);    
     */
     
-    float *cross_factor_array;
+    float *cross_factor_array = NULL;
     cudaAllocateDeviceMemory(
         waveform_axes.num_waveforms,
         sizeof(float),
-        (void**)&cross_factor_array,
+        (void**)&cross_factor_array
     );
-    float *plus_factor_array;
+    float *plus_factor_array = NULL;
     cudaAllocateDeviceMemory(
         waveform_axes.num_waveforms,
         sizeof(float),
-        (void**)&plus_factor_array,
+        (void**)&plus_factor_array
     );
     
-    _calculateInclinationFactors(
+    int32_t grid_size = 
+        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    _calculateInclinationFactors<<<grid_size, BLOCK_SIZE>>>(
          waveform_axes,
          cross_factor_array,
-         plus_factor_array,
+         plus_factor_array
     );
     
-    const int32_t grid_size = 
-        ((waveform_axes.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    grid_size = 
+        ((waveform_axes.strain.total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
         
      _inclinationAdjust<<<grid_size, BLOCK_SIZE>>>(
         waveform_axes,
@@ -569,56 +576,114 @@ extern "C" waveform_axes_s inclinationAdjust(
     return waveform_axes;
 }
 
-__global__ void _polarisationRotation(
-          strain_array_s strain,
-    const float          cos_polarization,
-    const float          sin_polarization
+__global__ void _calculatePolarisationFactors(
+    const m_waveform_axes_s    waveform_axes,
+    const float               *polarizations,
+          float               *cos_polarization_array,
+          float               *sin_polarization_array
     ) {
     
     // Assign unique thread index for GPU calculation:
-    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    if (sample_index < strain.num_samples) 
-    {
-        const float temp_plus = strain.values[sample_index].plus;
-        strain.values[sample_index].plus = 
-            (cos_polarization*strain.values[sample_index].plus)
-            + (sin_polarization*strain.values[sample_index].cross);
+    const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
+        
+    // If not outside array bounds, add value toa array element:
+    if (waveform_index < waveform_axes.num_waveforms) 
+	{    
+        const float polarization = polarizations[waveform_index];
+        
+        cos_polarization_array[waveform_index] = cosf(2.0f*polarization);
+        sin_polarization_array[waveform_index] = sinf(2.0f*polarization);
+    }
+}
 
-        strain.values[sample_index].cross = 
-            (cos_polarization*strain.values[sample_index].cross) 
+__global__ void _polarisationRotation(
+          m_waveform_axes_s waveform_axes,
+    const float            *cos_polarization_array,
+    const float            *sin_polarization_array
+    ) {
+    
+    // Assign unique thread index for GPU calculation:
+    const int32_t thread_index = 
+        blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t max_num_samples_per_waveform = 
+        waveform_axes.strain.max_num_samples_per_waveform;
+    const int32_t waveform_index = (int32_t)
+        floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t sample_index = 
+        (int32_t) thread_index % max_num_samples_per_waveform;
+        
+        
+    if (
+           (thread_index < waveform_axes.strain.total_num_samples) 
+        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+    ) {
+        
+        const float cos_polarization = 
+            cos_polarization_array[waveform_index];
+        
+        const float sin_polarization = 
+            sin_polarization_array[waveform_index];
+    
+        const float temp_plus = waveform_axes.strain.values[thread_index].plus;
+        waveform_axes.strain.values[thread_index].plus = 
+            (cos_polarization*waveform_axes.strain.values[thread_index].plus)
+            + (sin_polarization*waveform_axes.strain.values[thread_index].cross);
+
+        waveform_axes.strain.values[thread_index].cross = 
+            (cos_polarization*waveform_axes.strain.values[thread_index].cross) 
             - (sin_polarization*temp_plus);
     }  
 }
 
-extern "C" waveform_axes_s polarisationRotation(
-    const float           polarization,
-          waveform_axes_s waveform_axes_td
+extern "C" m_waveform_axes_s polarisationRotation(
+    const float             *polarizations,
+          m_waveform_axes_s  waveform_axes
     ) {
     
     //R.C.: here's the reference explaining why we perform this rotation https://dcc.ligo.org/LIGO-G1900275
-    if (polarization != 0.0f) 
-    {        
-        const float cos_polarization = cosf(2.0f*polarization);
-        const float sin_polarization = sinf(2.0f*polarization);
-        
-        const int32_t grid_size = 
-            ((waveform_axes_td.strain.num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
-        
-        _polarisationRotation<<<grid_size, BLOCK_SIZE>>>(
-            waveform_axes_td.strain,
-            cos_polarization,
-            sin_polarization
-        );
-    }
     
-    return waveform_axes_td;
+    float *cos_polarization_array = NULL;
+    cudaAllocateDeviceMemory(
+        waveform_axes.num_waveforms,
+        sizeof(float),
+        (void**)&cos_polarization_array
+    );
+    float *sin_polarization_array = NULL;
+    cudaAllocateDeviceMemory(
+        waveform_axes.num_waveforms,
+        sizeof(float),
+        (void**)&sin_polarization_array
+    );
+    
+    int32_t grid_size = 
+        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    _calculatePolarisationFactors<<<grid_size, BLOCK_SIZE>>>(
+          waveform_axes,
+          polarizations,
+          cos_polarization_array,
+          sin_polarization_array
+    );
+
+    grid_size = 
+        ((waveform_axes.strain.total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+
+    _polarisationRotation<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes,
+        cos_polarization_array,
+        sin_polarization_array
+    );
+    
+    cudaFree(cos_polarization_array);
+    cudaFree(sin_polarization_array);
+    
+    return waveform_axes;
 }
 
 __global__ void _calcPolarizationCoefficients(
     const m_complex_waveform_axes_s  waveform_axes,
-    const cuFloatComplex            *cos_coefficients,
-    const cuFloatComplex            *sin_coefficients
+          cuFloatComplex            *cos_coefficients,
+          cuFloatComplex            *sin_coefficients
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -661,20 +726,20 @@ __global__ void _applyPolarization(
     
     if (
            (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.strain.num_samples_in_waveform[index])
+        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
     ) {
         const cuFloatComplex original_plus = 
-            waveform_axes.strain.values[index].plus;
+            waveform_axes.strain.values[thread_index].plus;
         const cuFloatComplex original_cross = 
-            waveform_axes.strain.values[index].cross;
+            waveform_axes.strain.values[thread_index].cross;
             
-        waveform_axes.strain.values[index].plus =
+        waveform_axes.strain.values[thread_index].plus =
             cuCaddf(
               cuCmulf(cos_coefficients[waveform_index], original_plus),
               cuCmulf(sin_coefficients[waveform_index], original_cross)
             );
         
-        waveform_axes.strain.values[index].cross = 
+        waveform_axes.strain.values[thread_index].cross = 
             cuCsubf(
               cuCmulf(cos_coefficients[waveform_index], original_cross),
               cuCmulf(sin_coefficients[waveform_index], original_plus)
@@ -686,24 +751,24 @@ extern "C" int32_t applyPolarization(
     const m_complex_waveform_axes_s  waveform_axes
     ) {
     
-    int32_t grid_size = 
-        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    
-    cuFloatComplex *cos_coefficients;
+    cuFloatComplex *cos_coefficients = NULL;
     cudaAllocateDeviceMemory(
         waveform_axes.num_waveforms,
         sizeof(cuFloatComplex),
         (void**)&cos_coefficients
     );
     
-    cuFloatComplex *sin_coefficients;
+    cuFloatComplex *sin_coefficients = NULL;
     cudaAllocateDeviceMemory(
         waveform_axes.num_waveforms,
         sizeof(cuFloatComplex),
         (void**)&sin_coefficients
     );
     
-    _calcPolarizationCoefficients(
+    int32_t grid_size = 
+        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    _calcPolarizationCoefficients<<<grid_size, BLOCK_SIZE>>>(
         waveform_axes,
         cos_coefficients,
         sin_coefficients
@@ -727,8 +792,8 @@ __global__ void _calculateTaperIndicies(
     const m_complex_waveform_axes_s  waveform_axes,
     const frequencyUnit_t           *starting_frequencies,
     const frequencyUnit_t           *ending_frequencies,
-    const int32_t                   *start_indicies,
-    const int32_t                   *end_indices
+          int32_t                   *start_indicies,
+          int32_t                   *end_indicies
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -752,7 +817,7 @@ __global__ void _calculateTaperIndicies(
             (int32_t)roundf(
                 starting_frequency.hertz/frequency_interval.hertz
             );
-        end_indices[waveform_index] = 
+        end_indicies[waveform_index] = 
             (int32_t)roundf(
                 minimum_frequency.hertz/frequency_interval.hertz    
             );
@@ -781,7 +846,7 @@ __global__ void _taperWaveform(
         const int32_t start_index = 
             start_indicies[waveform_index];
         const int32_t end_index = 
-            end_indices[waveform_index];
+            end_indicies[waveform_index];
         
         if (sample_index < start_index) 
         {
@@ -847,26 +912,26 @@ extern "C" int32_t taperWaveform(
     int32_t grid_size = 
         ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
-    int32_t *start_indicies;
+    int32_t *start_indicies = NULL;
     cudaAllocateDeviceMemory(
         waveform_axes.num_waveforms,
         sizeof(int32_t),
         (void**)&start_indicies
     );
     
-    int32_t *end_indices;
+    int32_t *end_indicies = NULL;
     cudaAllocateDeviceMemory(
         waveform_axes.num_waveforms,
         sizeof(int32_t),
-        (void**)&end_indices
+        (void**)&end_indicies
     );
     
-     _calculateTaperIndicies(
+     _calculateTaperIndicies<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes,
         starting_frequencies,
         minimum_frequencies,
-        waveform_axes,
         start_indicies,
-        end_indices
+        end_indicies
     );
         
     // Perform tapering on device:
