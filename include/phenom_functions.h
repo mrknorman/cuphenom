@@ -179,7 +179,7 @@ float Nudge(
     {
         if (!gsl_fcmp(x, X, epsilon))
         {
-            printf("Nudging value %.15g to %.15g.\n", x, X);
+            //fprintf("Nudging value %.15g to %.15g.\n", x, X);
             new_x = X;
         }
     }
@@ -667,9 +667,7 @@ m_waveform_axes_s convertWaveformFDToTD(
               *waveform_axes_fd.time.interval_of_waveform[0].seconds, // Assume all waveforms have same time interval
         (cuFloatComplex*) waveform_axes_fd.strain.values,
         (float**)&waveform_axes_td.strain.values
-    );
-    
-    cudaFree(waveform_axes_fd.strain.values);
+    );    
     
     return waveform_axes_td;
 }
