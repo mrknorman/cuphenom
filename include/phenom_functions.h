@@ -645,6 +645,9 @@ m_waveform_axes_s convertWaveformFDToTD(
     m_waveform_axes_s waveform_axes_td;
     waveform_axes_td.merger_time_for_waveform = 
         waveform_axes_fd.merger_time_for_waveform;
+        
+    //printf("Time: %i \n", waveform_axes_fd.time.total_num_samples);
+        
     waveform_axes_td.time = 
         waveform_axes_fd.time;
     waveform_axes_td.strain =
@@ -660,11 +663,22 @@ m_waveform_axes_s convertWaveformFDToTD(
     waveform_axes_td.aproximant_variables_of = waveform_axes_fd.aproximant_variables_of;
     waveform_axes_td.num_waveforms           = waveform_axes_fd.num_waveforms;
     
+    timeUnit_t *waveform_interval_array = NULL;
+    cudaToHost(
+        (void*)waveform_axes_fd.time.interval_of_waveform, 
+        sizeof(timeUnit_t),
+        1,
+        (void**)&waveform_interval_array
+    );
+    
+    // Assume all waveforms have same time interval
+    const timeUnit_t waveform_interval = waveform_interval_array[0];
+    free(waveform_interval_array);
+        
     cudaBatchInterlacedIRFFT(
         waveform_axes_fd.strain.max_num_samples_per_waveform,
         num_waveforms,
-        (float)max_num_samples_in_waveform_td 
-              *waveform_axes_fd.time.interval_of_waveform[0].seconds, // Assume all waveforms have same time interval
+        (float)max_num_samples_in_waveform_td*waveform_interval.seconds, 
         (cuFloatComplex*) waveform_axes_fd.strain.values,
         (float**)&waveform_axes_td.strain.values
     );    

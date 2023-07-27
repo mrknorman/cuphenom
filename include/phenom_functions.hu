@@ -910,18 +910,20 @@ extern "C" int32_t taperWaveform(
     
     // Calculate sample indicies of start and minimum frequencies:
     int32_t grid_size = 
-        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
+        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);\
+        
+    const int32_t num_waveforms = waveform_axes.num_waveforms;
     
     int32_t *start_indicies = NULL;
     cudaAllocateDeviceMemory(
-        waveform_axes.num_waveforms,
+        num_waveforms,
         sizeof(int32_t),
         (void**)&start_indicies
     );
     
     int32_t *end_indicies = NULL;
     cudaAllocateDeviceMemory(
-        waveform_axes.num_waveforms,
+        num_waveforms,
         sizeof(int32_t),
         (void**)&end_indicies
     );
@@ -939,7 +941,8 @@ extern "C" int32_t taperWaveform(
         ((waveform_axes.strain.total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
     _taperWaveform<<<grid_size, BLOCK_SIZE>>>
         (waveform_axes, start_indicies, end_indicies);
-        
+    
+    //Needs to be updated to every waveform
     _zeroNyquistFrequency<<<1, 1>>>(
         waveform_axes
     );

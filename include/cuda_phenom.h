@@ -122,9 +122,7 @@ m_complex_waveform_axes_s cuPhenomDGenerateFD(
     for (int32_t index = 0; index < num_waveforms; index++) 
     {
         const frequencyUnit_t reference_frequency  = temporal_properties[index].reference_frequency; 
-        const frequencyUnit_t frequency_interval   = temporal_properties[index].frequency_interval;    
         const frequencyUnit_t starting_frequency   = temporal_properties[index].starting_frequency;       
-        const frequencyUnit_t old_ending_frequency = temporal_properties[index].ending_frequency;   
     
         // Update temporal properties: (OLD REPLACE WITH GPU SIDE CALCULATION)
         temporal_properties[index].reference_frequency = 
@@ -182,7 +180,7 @@ m_complex_waveform_axes_s cuInspiralFD(
     frequencyUnit_t new_starting_frequencies[num_waveforms];
     frequencyUnit_t old_starting_frequencies[num_waveforms];
     timeUnit_t      time_shifts             [num_waveforms];
-    
+    frequencyUnit_t frequency_intervals     [num_waveforms];
     
     for (int32_t index = 0; index < num_waveforms; index++) 
     {
@@ -193,8 +191,6 @@ m_complex_waveform_axes_s cuInspiralFD(
             temporal_properties[index].frequency_interval; 
         frequencyUnit_t ending_frequency = 
             temporal_properties[index].ending_frequency;
-        frequencyUnit_t reference_frequency = 
-            temporal_properties[index].reference_frequency;
 
         // Apply condition that ending_frequency rounds to the next power-of-two 
         // multiple of frequency_interval.
@@ -348,7 +344,8 @@ m_complex_waveform_axes_s cuInspiralFD(
                 temporal_properties[index].merge_time_upper_bound,
                 temporal_properties[index].ringdown_time_upper_bound
             );
-        
+            
+        frequency_intervals[index] = temporal_properties[index].frequency_interval;
     }
         
     // Generate the waveform in the frequency domain starting at 
@@ -409,18 +406,19 @@ m_complex_waveform_axes_s cuInspiralFD(
             );
         break;
     }
-    
-    printf("Here \n");
-    
-    for (int32_t index = 0; index < num_waveforms; index++)
-    {
-        // Assign waveform properties:
-        waveform_axes_fd.frequency.interval_of_waveform[index] = temporal_properties[index].frequency_interval;
-        waveform_axes_fd.time.interval_of_waveform[index]      = time_intervals[index];
-    }
-    
-    printf("Here After \n");
-
+        
+    hostCudaMemInsert(
+		(void*)waveform_axes_fd.time.interval_of_waveform, 
+		(void*)time_intervals,
+        sizeof(timeUnit_t),
+        num_waveforms
+    );
+    hostCudaMemInsert(
+		(void*)waveform_axes_fd.frequency.interval_of_waveform, 
+		(void*)frequency_intervals,
+        sizeof(frequencyUnit_t),
+        num_waveforms
+    );
     
     if (system_properties[0].ascending_node_longitude > 0.0f) 
     {   
@@ -428,18 +426,48 @@ m_complex_waveform_axes_s cuInspiralFD(
             waveform_axes_fd
         );
     }
+    
+    frequencyUnit_t *starting_frequencies_g = NULL;
+    cudaToDevice(
+        new_starting_frequencies, 
+        sizeof(frequencyUnit_t),
+        num_waveforms,
+        (void**)&starting_frequencies_g
+    );
+    
+    frequencyUnit_t *minimum_frequencies_g = NULL;
+    cudaToDevice(
+        old_starting_frequencies, 
+        sizeof(frequencyUnit_t),
+        num_waveforms,
+        (void**)&minimum_frequencies_g
+    );
 
     taperWaveform(
         waveform_axes_fd,
-        new_starting_frequencies,
-        old_starting_frequencies
-    );
-
-    performTimeShifts(
-        waveform_axes_fd,
-        time_shifts
+        starting_frequencies_g,
+        minimum_frequencies_g
     );
     
+    cudaFree(starting_frequencies_g); 
+    cudaFree(minimum_frequencies_g);
+    
+    
+    timeUnit_t *time_shifts_g = NULL;
+    cudaToDevice(
+        time_shifts, 
+        sizeof(timeUnit_t),
+        num_waveforms,
+        (void**)&time_shifts_g
+    );
+    
+    performTimeShifts(
+        waveform_axes_fd,
+        time_shifts_g
+    );
+    
+    cudaFree(time_shifts_g);
+        
     free(temporal_properties);
     
     return waveform_axes_fd;
@@ -455,7 +483,12 @@ m_waveform_axes_s cuInspiralTDFromFD(
     // Generate the conditioned waveform in the frequency domain note: redshift 
     // factor has already been applied above set frequency_interval = 0 to get a 
     // small enough resolution:
-    temporal_properties[0].frequency_interval = initFrequencyHertz(0.0f);
+    
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        temporal_properties[index].frequency_interval = initFrequencyHertz(0.0f);
+    }
+    
     m_complex_waveform_axes_s waveform_axes_fd =
         cuInspiralFD(
             system_properties,
@@ -470,54 +503,84 @@ m_waveform_axes_s cuInspiralTDFromFD(
     // we shift waveform backwards in time and compensate for this
     // shift by adjusting the epoch:
     
-    timeUnit_t time_shifts[] = {
-        temporal_properties[0].extra_time
-    };
+    timeUnit_t time_shifts[num_waveforms];
     
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        time_shifts[index] = temporal_properties[index].extra_time;
+
+    }
+    
+    timeUnit_t *time_shifts_g = NULL;
+    cudaToDevice(
+        time_shifts, 
+        sizeof(timeUnit_t),
+        num_waveforms,
+        (void**)&time_shifts_g
+    );
     performTimeShifts(
         waveform_axes_fd,
-        time_shifts
+        time_shifts_g
     );
-        
+    cudaFree(time_shifts_g);
+            
     m_waveform_axes_s waveform_axes_td = 
         convertWaveformFDToTD(
             waveform_axes_fd
         );         
-
+    
+    float num_extra_samples[num_waveforms];
+    
     // Compute how long a chirp we should have revised estimate of chirp length 
     // from new start frequency:
-    temporal_properties[0].chirp_time_upper_bound =  
-        InspiralChirpTimeBound(
-            temporal_properties[0].starting_frequency, 
-            system_properties[0]
-        );   
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        temporal_properties[index].chirp_time_upper_bound =  
+            InspiralChirpTimeBound(
+                temporal_properties[index].starting_frequency, 
+                system_properties[index]
+            );   
+
+        temporal_properties[index].starting_frequency = 
+            InspiralChirpStartFrequencyBound(
+                scaleTime(
+                    temporal_properties[index].chirp_time_upper_bound, 
+                    (1.0f + EXTRA_TIME_FRACTION)
+                ),
+                system_properties[index]
+            );
+
+        // Integer number of samples:
+        const timeUnit_t time_shift = 
+            initTimeSeconds(
+                  (roundf(
+                        temporal_properties[index].extra_time.seconds
+                      / temporal_properties[index].time_interval.seconds) 
+                * temporal_properties[index].time_interval.seconds)
+            );
+
+        // Amount to snip off at the end is num_extra_samples:
+        num_extra_samples[index] = 
+            roundf(
+                time_shift.seconds / temporal_properties[index].time_interval.seconds
+            );
+    }
     
-    temporal_properties[0].starting_frequency = 
-        InspiralChirpStartFrequencyBound(
-            scaleTime(
-                temporal_properties[0].chirp_time_upper_bound, 
-                (1.0f + EXTRA_TIME_FRACTION)
-            ),
-            system_properties[0]
-        );
+    float *num_extra_samples_g = NULL;
+    cudaToDevice(
+        num_extra_samples, 
+        sizeof(float),
+        num_waveforms,
+        (void**)&num_extra_samples_g
+    );
     
-    // Integer number of samples:
-    const timeUnit_t time_shift = 
-        initTimeSeconds(
-              (roundf(
-                    temporal_properties[0].extra_time.seconds
-                  / temporal_properties[0].time_interval.seconds) 
-            * temporal_properties[0].time_interval.seconds)
-        );
+    hostCudaSubtract(
+        waveform_axes_td.strain.num_samples_in_waveform, 
+        num_extra_samples_g, 
+        num_waveforms
+    );
     
-    // Amount to snip off at the end is num_extra_samples:
-    const int32_t num_extra_samples = 
-        (int32_t) roundf(
-            time_shift.seconds / temporal_properties[0].time_interval.seconds
-        );
-    
-    // Snip off extra time at the end of waveform:
-    waveform_axes_td.strain.num_samples_in_waveform[0] -= (float)num_extra_samples;
+    cudaFree(num_extra_samples_g);
            
     return waveform_axes_td;
 }
@@ -721,11 +784,23 @@ void generatePhenomCUDA(
             num_waveforms,
             approximant
         );
+        
+    float *num_samples_in_waveform_array = NULL;
+    cudaToHost(
+        (void*)waveform_axes_td.strain.num_samples_in_waveform, 
+        sizeof(float),
+        1,
+        (void**)&num_samples_in_waveform_array
+    );
+    
+    // Assume all waveforms have same time interval
+    const int32_t num_samples_in_waveform = (int32_t) num_samples_in_waveform_array[0];
+    free(num_samples_in_waveform_array);
     
     float2_t *strain = NULL;
     cudaToHost(
         (void**)&waveform_axes_td.strain.values[
-        (int32_t)waveform_axes_td.strain.num_samples_in_waveform[0] - num_samples - 1], 
+        num_samples_in_waveform - num_samples - 1], 
         sizeof(float2_t),
         num_samples,
         (void**) &strain
