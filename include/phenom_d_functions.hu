@@ -1224,9 +1224,6 @@ __device__ __forceinline__ phase_coefficients_s
             intermediate_start_frequency_powers, 
             coefficients
         );
-        
-    printf("inspiral_ansatz_derivitive %f, intermediate_ansatz_derivitive %f\n", inspiral_ansatz_derivitive, intermediate_ansatz_derivitive);
-
     
     coefficients.C2Int = 
         inspiral_ansatz_derivitive - intermediate_ansatz_derivitive;
@@ -1292,8 +1289,6 @@ __device__ __forceinline__ phase_coefficients_s
             Rholm, 
             Taulm) 
         - coefficients.C2MRD*coefficients.merger_ringdown_start_frequency;
-        
-    printf("C2Int %e, C1Int %e, C2MRD %e, C1MRD %e \n", coefficients.C2Int, coefficients.C1Int, coefficients.C2MRD, coefficients.C1MRD);
             
     return coefficients;
 }
@@ -1657,7 +1652,6 @@ __global__ void _initPhenomDVariables(
                 damping_splines[waveform_index]
             );
         
-        printf("TIDAL_PN_ORDER: %i", tidal_pn_order);
         pn_phasing_series_s phasing_series =
             initTaylorF2AlignedPhasingSeries(system_properties, tidal_pn_order);
 
@@ -1906,9 +1900,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         final_spins,
         num_waveforms
     );
-    
-    printf("Final Spins: %f \n", final_spins[0]);
-    
+        
     free(final_spins);
     
     temporal_properties_s *temporal_properties_of_g = NULL;
@@ -2046,11 +2038,13 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
             damping_splines,
             num_waveforms
         );
-        
+    
+    /* Break in case of emergency
     printPhenomDVariables(
         &aproximant_variables_of[0].d
     );
-        
+    */
+     
     cudaFree((void*)ringdown_splines); cudaFree((void*)damping_splines); 
         
     // Construct Waveform Axes:

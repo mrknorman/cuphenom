@@ -355,6 +355,7 @@ m_complex_waveform_axes_s cuInspiralFD(
         case D:
         // Call the waveform driver routine:
         
+        /*
         printSystemProptiesHost(
             system_properties[0]
         );
@@ -362,6 +363,7 @@ m_complex_waveform_axes_s cuInspiralFD(
         printTemporalProptiesHost(
             temporal_properties[0]
         );
+        */
         
         waveform_axes_fd = 
             cuPhenomDGenerateFD(
@@ -371,13 +373,12 @@ m_complex_waveform_axes_s cuInspiralFD(
                 //4
             );
         
+        /*
         printComplexStrain(
             waveform_axes_fd,
             num_waveforms
         );
-        
-        exit(1);
-
+        */
 
         break;
 
@@ -756,7 +757,7 @@ void generatePhenomCUDA(
     };
     
     angularUnit_t   reference_orbital_phase  = initAngleRadians(0.0f);
-    float           ascending_node_longitude = 100.0f;
+    float           ascending_node_longitude = 0.0f;
     float           eccentricity             = 0.0f;
     float           mean_periastron_anomaly  = 0.0f;
     timeUnit_t      time_interval        = 
