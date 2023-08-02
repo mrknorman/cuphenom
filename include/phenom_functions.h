@@ -21,8 +21,7 @@ m_waveform_axes_s inclinationAdjust(
     );
 
 m_waveform_axes_s polarisationRotation(
-    const float           polarization,
-          m_waveform_axes_s waveform_axes_td
+    m_waveform_axes_s  waveform_axes_td
     );
 
 int32_t applyPolarization(
@@ -38,6 +37,21 @@ int32_t taperWaveform(
 int32_t performTimeShifts(
           m_complex_waveform_axes_s  waveform_axes,
     const timeUnit_t                *shift_duration
+    );
+
+void printComplexStrain(
+    const m_complex_waveform_axes_s waveform_axes,
+    const int32_t                   num_waveforms
+    );
+
+void printStrain(
+    const m_strain_array_s strain_array,
+    const int32_t          num_waveforms
+    );
+
+void checkStrainNans(
+    const m_complex_strain_array_s strain_array,
+    const int32_t                  num_waveforms
     );
 
 static void checkSystemParameters(
@@ -621,8 +635,20 @@ m_waveform_axes_s convertWaveformFDToTD(
     ) {
     
     const int32_t num_waveforms = waveform_axes_fd.num_waveforms;
-    float *num_samples_in_waveform_td = 
-        waveform_axes_fd.strain.num_samples_in_waveform;
+    
+    //Need to copy this.
+    float *num_samples_in_waveform_td = NULL;
+    
+    cudaAllocateDeviceMemory(
+        sizeof(float),
+        num_waveforms,
+        (void**)&num_samples_in_waveform_td
+    );
+    hostCudaMemCpy(
+        num_samples_in_waveform_td,
+        waveform_axes_fd.strain.num_samples_in_waveform, 
+        num_waveforms
+    );
     
     // Get new num_samples_per waveform:
     hostCudaAddValue(
@@ -646,13 +672,18 @@ m_waveform_axes_s convertWaveformFDToTD(
     waveform_axes_td.merger_time_for_waveform = 
         waveform_axes_fd.merger_time_for_waveform;
         
-    //printf("Time: %i \n", waveform_axes_fd.time.total_num_samples);
+    strain_element_t *strain_values = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(strain_element_t),
+        total_num_samples_td,
+        (void**)&strain_values
+    );
         
     waveform_axes_td.time = 
         waveform_axes_fd.time;
     waveform_axes_td.strain =
         (m_strain_array_s){
-            .values                       = NULL,
+            .values                       = strain_values,
             .num_samples_in_waveform      = num_samples_in_waveform_td,
             .max_num_samples_per_waveform = max_num_samples_in_waveform_td,
             .total_num_samples            = total_num_samples_td
@@ -674,14 +705,41 @@ m_waveform_axes_s convertWaveformFDToTD(
     // Assume all waveforms have same time interval
     const timeUnit_t waveform_interval = waveform_interval_array[0];
     free(waveform_interval_array);
+    
+    const timeUnit_t waveform_duration = scaleTime(
+        waveform_interval,
+        (float) max_num_samples_in_waveform_td
+    );
+    
+    cuFloatComplex *temp_strain_values = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(cuFloatComplex),
+        waveform_axes_fd.strain.total_num_samples*2,
+        (void**)&temp_strain_values
+    );
+    
+    rearrangeMemoryKernel(
+        (cuFloatComplex*)waveform_axes_fd.strain.values,
+        temp_strain_values,
+        num_waveforms, 
+        waveform_axes_fd.strain.max_num_samples_per_waveform
+    );
+    cudaFree(waveform_axes_fd.strain.values);
         
-    cudaBatchInterlacedIRFFT(
-        waveform_axes_fd.strain.max_num_samples_per_waveform,
-        num_waveforms,
-        (float)max_num_samples_in_waveform_td*waveform_interval.seconds, 
-        (cuFloatComplex*) waveform_axes_fd.strain.values,
-        (float**)&waveform_axes_td.strain.values
-    );    
+    cudaIRfft(
+        waveform_axes_td.strain.max_num_samples_per_waveform,
+        num_waveforms*2,
+	    waveform_duration.seconds,
+        temp_strain_values
+    );
+        
+    inverseRearrangeMemoryKernel(
+        (float*)temp_strain_values, 
+        (float*)waveform_axes_td.strain.values, 
+        num_waveforms, 
+        waveform_axes_td.strain.max_num_samples_per_waveform
+    );
+    cudaFree(temp_strain_values);
     
     return waveform_axes_td;
 }
@@ -966,12 +1024,72 @@ pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
     return phasing_series;
 }
 
-void printSystemProperties(
-    const system_properties_s *system_properties
-    );
+void printCompanion(
+    companion_s companion
+    ) {
+    
+    printf("===== \n");
+    printf("Mass: %f Msun. \n", companion.mass.msun); 
+    printf("Spin: %fx %fy %fz. \n", companion.spin.x, companion.spin.y, companion.spin.z); 
+    printf("Quadrapole Moment: %f. \n", companion.quadrapole_moment); 
+    printf("Lambda: %f. \n", companion.lambda); 
+    printf("===== \n");
 
+}   
 
-//XLALSimInspiralTaylorF2AlignedPhasing
-  
+void printSystemProptiesHost(
+    system_properties_s system_properties
+    ) {
+    
+    printf("Companion 1: \n");
+    printCompanion(system_properties.companion[0]);
+    printf("Companion 2: \n");
+    printCompanion(system_properties.companion[1]);
+    
+    printf("Mass properties: \n");
+    
+    printf("===== \n");
+    printf("Total Mass: %f Msun. \n", system_properties.total_mass.msun);
+    printf("Reduced Mass: %f Msun. \n", system_properties.reduced_mass.msun);
+    printf("Symmetric Mass Ratio: %f. \n", system_properties.symmetric_mass_ratio);
+    printf("===== \n");
+
+    printf("Distance properties: \n");
+    
+    printf("===== \n");
+    printf("Distance: %f Mpc. \n", system_properties.distance.Mpc);
+    printf("Redshift: %f. \n", system_properties.redshift);
+    printf("===== \n");
+    
+    printf("Orbital properties: \n");
+    
+    printf("===== \n");
+    printf("Reference Orbital Phase: %f Radians. \n", system_properties.reference_orbital_phase.radians);
+    printf("Ascending Node Longitude: %f. \n", system_properties.ascending_node_longitude);
+    printf("Inclination: %f radians. \n", system_properties.inclination.radians);
+    printf("Eccentricity: %f. \n", system_properties.eccentricity);
+    printf("Mean Periastron Anomaly: %f. \n", system_properties.mean_periastron_anomaly);
+    printf("===== \n");
+}  
+
+void printTemporalProptiesHost(
+    temporal_properties_s temporal_properties
+    ) {
+    
+    printf("Temporal properties: \n");
+    
+    printf("===== \n");
+    printf("Time Interval: %f s. \n", temporal_properties.time_interval.seconds);
+    printf("Frequency Interval: %f Hz. \n", temporal_properties.frequency_interval.hertz);
+    printf("Starting Frequency: %f Hz. \n", temporal_properties.starting_frequency.hertz);
+    printf("Ending Frequency: %f Hz. \n", temporal_properties.ending_frequency.hertz);
+    printf("Reference Frequency: %f Hz. \n", temporal_properties.reference_frequency.hertz);
+    printf("Extra Time: %f s. \n", temporal_properties.extra_time.seconds);
+    printf("Chirp Time Upper Bound: %f s. \n", temporal_properties.chirp_time_upper_bound.seconds);
+    printf("Merge Time Upper Bound: %f s. \n", temporal_properties.merge_time_upper_bound.seconds);
+    printf("Ringdown Time Upper Bound: %f s. \n", temporal_properties.ringdown_time_upper_bound.seconds);
+    printf("Total Time Upper Bound: %f s. \n", temporal_properties.total_time_upper_bound.seconds);
+    printf("===== \n");
+}    
 
 #endif

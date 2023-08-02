@@ -297,7 +297,6 @@ typedef struct {
 typedef struct {
     float v      [PN_PHASING_SERIES_MAX_ORDER+1];
     float vlogv  [PN_PHASING_SERIES_MAX_ORDER+1];
-    float vlogvsq[PN_PHASING_SERIES_MAX_ORDER+1];
 } pn_phasing_series_s;
 
 typedef struct{

@@ -48,6 +48,8 @@ def test_generate_phenom():
     times = np.arange(0, duration_seconds, 1/sample_rate_hertz)
     polarisations_plus = result[:, 0]
     polarisations_cross = result[:, 1]
+    
+    print(polarisations_plus);
 
     # Prepare data for bokeh
     data = ColumnDataSource(data=dict(
@@ -145,4 +147,5 @@ def speed_test_generate_phenom(num_tests=100):
 if __name__ == "__main__":
     
     # Call the test function
+    test_generate_phenom()
     speed_test_generate_phenom(num_tests=1000000)

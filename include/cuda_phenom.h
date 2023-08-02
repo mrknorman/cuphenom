@@ -174,8 +174,7 @@ m_complex_waveform_axes_s cuInspiralFD(
             (void*)original_temporal_properties, 
             temporal_array_size
         );
-        
-        
+    
     timeUnit_t      time_intervals          [num_waveforms];
     frequencyUnit_t new_starting_frequencies[num_waveforms];
     frequencyUnit_t old_starting_frequencies[num_waveforms];
@@ -326,8 +325,8 @@ m_complex_waveform_axes_s cuInspiralFD(
         }
 
         // Update temporal properties:
-        temporal_properties[index].frequency_interval  = frequency_interval;
-        temporal_properties[index].starting_frequency  = new_starting_frequency;
+        temporal_properties[index].frequency_interval = frequency_interval;
+        temporal_properties[index].starting_frequency = new_starting_frequency;
         
         new_starting_frequencies[index] = new_starting_frequency;
         old_starting_frequencies[index] = old_starting_frequency;
@@ -355,6 +354,15 @@ m_complex_waveform_axes_s cuInspiralFD(
     {
         case D:
         // Call the waveform driver routine:
+        
+        printSystemProptiesHost(
+            system_properties[0]
+        );
+        
+        printTemporalProptiesHost(
+            temporal_properties[0]
+        );
+        
         waveform_axes_fd = 
             cuPhenomDGenerateFD(
                 system_properties,
@@ -363,6 +371,14 @@ m_complex_waveform_axes_s cuInspiralFD(
                 //4
             );
         
+        printComplexStrain(
+            waveform_axes_fd,
+            num_waveforms
+        );
+        
+        exit(1);
+
+
         break;
 
         case XPHM:
@@ -452,7 +468,6 @@ m_complex_waveform_axes_s cuInspiralFD(
     cudaFree(starting_frequencies_g); 
     cudaFree(minimum_frequencies_g);
     
-    
     timeUnit_t *time_shifts_g = NULL;
     cudaToDevice(
         time_shifts, 
@@ -496,7 +511,7 @@ m_waveform_axes_s cuInspiralTDFromFD(
             num_waveforms,
             approximant
         );
-    
+        
     // We want to make sure that this waveform will give something
     // sensible if it is later transformed into the time domain:
     // to avoid the end of the waveform wrapping around to the beginning,
@@ -527,8 +542,8 @@ m_waveform_axes_s cuInspiralTDFromFD(
     m_waveform_axes_s waveform_axes_td = 
         convertWaveformFDToTD(
             waveform_axes_fd
-        );         
-    
+        );        
+        
     float num_extra_samples[num_waveforms];
     
     // Compute how long a chirp we should have revised estimate of chirp length 
@@ -579,7 +594,7 @@ m_waveform_axes_s cuInspiralTDFromFD(
         num_extra_samples_g, 
         num_waveforms
     );
-    
+        
     cudaFree(num_extra_samples_g);
            
     return waveform_axes_td;
@@ -598,23 +613,26 @@ m_waveform_axes_s generateInspiral(
     //const frequencyUnit_t original_starting_frequency = starting_frequency; 
     
     // SEOBNR flag for spin aligned model version. 1 for SEOBNRv1, 2 for SEOBNRv2
-    float polarization = system_properties[0].ascending_node_longitude;
-    
-    // Save original inclination:
-    const angularUnit_t original_inclination = system_properties[0].inclination;
+    angularUnit_t original_inclinations[num_waveforms];  
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        // Save original inclination:
+        original_inclinations[index] = system_properties[index].inclination;
+    }
     
     switch (approximant)
     {
         case D:
             // Generate TD waveforms with zero inclincation so that amplitude 
             // can be calculated from hplus and hcross, apply 
-            // inclination-dependent factors in function below:      
-            system_properties[0].inclination = initAngleRadians(0.0);
+            // inclination-dependent factors in function below: 
+            for (int32_t index = 0; index < num_waveforms; index++)
+            {
+                system_properties[index].inclination = initAngleRadians(0.0f);
+            }
         break;
 
         case XPHM:
-            polarization = 0.0f;
-
         break;
 
         default:
@@ -634,13 +652,18 @@ m_waveform_axes_s generateInspiral(
             num_waveforms,
             approximant
         );
+        
     
-    // Set inclination to original:
-    system_properties[0].inclination = original_inclination;
+    // Set inclination to original: i don't know if this changes?
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        system_properties[index].inclination = original_inclinations[index];
+    }
     
     switch (approximant)
     {
-        case D:                        
+        case D:          
+            
             // Apply inclination-dependent factors:
             ;waveform_axes_td = inclinationAdjust(
                 waveform_axes_td
@@ -650,7 +673,6 @@ m_waveform_axes_s generateInspiral(
         break;
 
         case XPHM:
-            polarization = 0.0;
         break;
 
         default:
@@ -662,14 +684,16 @@ m_waveform_axes_s generateInspiral(
         break;
     }
     
-    // R.C.: here's the reference explaining why we perform this
-    // rotation https://dcc.ligo.org/LIGO-G1900275:
-    waveform_axes_td = 
-        polarisationRotation(
-            polarization,
-            waveform_axes_td
-        );
-    
+    if (approximant == D)
+    {
+        // R.C.: here's the reference explaining why we perform this
+        // rotation https://dcc.ligo.org/LIGO-G1900275:
+        waveform_axes_td = 
+            polarisationRotation(
+                waveform_axes_td
+            );
+    }
+        
     // Condition the time domain waveform by tapering in the extra time
     // at the beginning and high-pass filtering above original 
     // starting_frequency:
@@ -784,30 +808,44 @@ void generatePhenomCUDA(
             num_waveforms,
             approximant
         );
-        
+    
     float *num_samples_in_waveform_array = NULL;
     cudaToHost(
         (void*)waveform_axes_td.strain.num_samples_in_waveform, 
         sizeof(float),
-        1,
+        num_waveforms,
         (void**)&num_samples_in_waveform_array
     );
     
     // Assume all waveforms have same time interval
     const int32_t num_samples_in_waveform = (int32_t) num_samples_in_waveform_array[0];
     free(num_samples_in_waveform_array);
+        
+    //Rearange memory here:
+    
+    printStrain(
+        waveform_axes_td.strain,
+        num_waveforms
+    );
     
     float2_t *strain = NULL;
     cudaToHost(
-        (void**)&waveform_axes_td.strain.values[
+        (void*)&waveform_axes_td.strain.values[
         num_samples_in_waveform - num_samples - 1], 
         sizeof(float2_t),
         num_samples,
         (void**) &strain
     );
     cudaFree(waveform_axes_td.strain.values);
+    
+    /*
+    for (int32_t index = 0; index < num_samples; index++)
+    {
+        printf("Plus: %f. Cross %f. \n", strain[index].x, strain[index].y);
+    }
+    */
         
-    if (waveform_axes_td.strain.num_samples_in_waveform[0] < num_samples) 
+    if (waveform_axes_td.strain.max_num_samples_per_waveform < num_samples) 
     {    
         fprintf(
             stderr, 

@@ -1103,11 +1103,11 @@ __device__ __forceinline__ float calculateInspiralPhaseAnsatzDerivitive(
     ) {
     // First frequency derivative of PhiInsAnsatzInt
     
-    const float start_freqeuncy = coefficients.intermediate_start_frequency;
+    const float start_frequency = coefficients.intermediate_start_frequency;
     const float *sigma          = coefficients.inspiral; 
-
+    
     // Assemble PN phasing series:
-    const float init_v = cbrtf((float)M_PI*start_freqeuncy);
+    const float init_v = cbrtf((float)M_PI*start_frequency);
     
     const int32_t PN_PHASING_SERIES_LENGTH = 9;
     float v[PN_PHASING_SERIES_LENGTH];
@@ -1224,6 +1224,9 @@ __device__ __forceinline__ phase_coefficients_s
             intermediate_start_frequency_powers, 
             coefficients
         );
+        
+    printf("inspiral_ansatz_derivitive %f, intermediate_ansatz_derivitive %f\n", inspiral_ansatz_derivitive, intermediate_ansatz_derivitive);
+
     
     coefficients.C2Int = 
         inspiral_ansatz_derivitive - intermediate_ansatz_derivitive;
@@ -1289,6 +1292,8 @@ __device__ __forceinline__ phase_coefficients_s
             Rholm, 
             Taulm) 
         - coefficients.C2MRD*coefficients.merger_ringdown_start_frequency;
+        
+    printf("C2Int %e, C1Int %e, C2MRD %e, C1MRD %e \n", coefficients.C2Int, coefficients.C1Int, coefficients.C2MRD, coefficients.C1MRD);
             
     return coefficients;
 }
@@ -1442,7 +1447,6 @@ __global__ void _sumPhenomDFrequencies(
                 waveform_axes_fd.
                     aproximant_variables_of[waveform_index].d;
 
-
             const int32_t offset = variables.offset;
 
             const amplitude_coefficients_s amplitude_coefficients =
@@ -1592,7 +1596,7 @@ __global__ void _initPhenomDVariables(
     const float                  *damping_splines,
     const int32_t                 num_waveforms
     ) {
-    
+            
     // I do not know what these do and at this point I'm too scared to ask:
     const float         non_gdr_chi_6  = 0.0f;
     const tidal_order_e tidal_pn_order = TIDAL_ORDER_ALL; 
@@ -1637,7 +1641,7 @@ __global__ void _initPhenomDVariables(
             offset = 
                 (int32_t)(starting_frequency.hertz / frequency_interval.hertz);
         }
-        
+                
         // Init amplitude coefficients:
         amplitude_coefficients_s amplitude_coefficients = 
             initAmplitudeCoefficients(
@@ -1652,7 +1656,8 @@ __global__ void _initPhenomDVariables(
                 ringdown_splines[waveform_index],
                 damping_splines[waveform_index]
             );
-            
+        
+        printf("TIDAL_PN_ORDER: %i", tidal_pn_order);
         pn_phasing_series_s phasing_series =
             initTaylorF2AlignedPhasingSeries(system_properties, tidal_pn_order);
 
@@ -1734,6 +1739,108 @@ __global__ void _initPhenomDVariables(
     }
 }
 
+#include <stdio.h>
+
+__global__ void _printPhenomDVariables(
+    const phenom_d_variables_s *phenom
+    ) {
+    
+    printf("Phenom D Variables:\n");
+    printf("  Offset: %d\n", phenom->offset);
+
+    printf("  Amplitude Coefficients:\n");
+    printf("    Eta: %f\n    EtaInv: %f\n    Chi12: %f\n    Chi22: %f\n    Eta2: %f\n    Eta3: %f\n    Seta: %f\n    SetaPlus1: %f\n    Chi1: %f\n    Chi2: %f\n    Q: %f\n    Chi: %f\n    Ringdown Frequency: %f\n    Damping Time: %f\n    Inspiraling Merger Peak Frequency: %f\n",
+           phenom->amplitude_coefficients.eta, phenom->amplitude_coefficients.etaInv,
+           phenom->amplitude_coefficients.chi12, phenom->amplitude_coefficients.chi22,
+           phenom->amplitude_coefficients.eta2, phenom->amplitude_coefficients.eta3,
+           phenom->amplitude_coefficients.Seta, phenom->amplitude_coefficients.SetaPlus1,
+           phenom->amplitude_coefficients.chi1, phenom->amplitude_coefficients.chi2,
+           phenom->amplitude_coefficients.q, phenom->amplitude_coefficients.chi,
+           phenom->amplitude_coefficients.ringdown_frequency, phenom->amplitude_coefficients.damping_time,
+           phenom->amplitude_coefficients.inspiral_merger_peak_frequency);
+    
+    for (int i = 0; i < NUM_AMPLITUDE_INSPIRAL_COEFFICIENTS; i++) {
+        printf("    Inspiraling Coefficient %d: %f\n", i, phenom->amplitude_coefficients.inspiral[i]);
+    }
+    
+    for (int i = 0; i < NUM_AMPLITUDE_INTERMEDIATE_TERMS; i++) {
+        printf("    Intermediate Coefficient %d: %f\n", i, phenom->amplitude_coefficients.intermediate[i]);
+    }
+
+    for (int i = 0; i < NUM_AMPLITUDE_MERGER_RINGDOWN_COEFFICIENTS; i++) {
+        printf("    Merger-Ringdown Coefficient %d: %f\n", i, phenom->amplitude_coefficients.merger_ringdown[i]);
+    }
+
+    printf("  Amplitude Prefactor 0: %f\n", phenom->amplitude_prefactor_0);
+
+    printf("  Amplitude Inspiraling Prefactors:\n");
+    printf("    Two Thirds: %f\n    One: %f\n    Four Thirds: %f\n    Five Thirds: %f\n    Two: %f\n    Seven Thirds: %f\n    Eight Thirds: %f\n    Three: %f\n    Amp0: %f\n",
+           phenom->amplitude_prefactors.two_thirds, phenom->amplitude_prefactors.one,
+           phenom->amplitude_prefactors.four_thirds, phenom->amplitude_prefactors.five_thirds,
+           phenom->amplitude_prefactors.two, phenom->amplitude_prefactors.seven_thirds,
+           phenom->amplitude_prefactors.eight_thirds, phenom->amplitude_prefactors.three,
+           phenom->amplitude_prefactors.amp0);
+
+    printf("  Phase Coefficients:\n");
+    printf("    Eta: %e\n    EtaInv: %e\n    Eta2: %e\n    Seta: %e\n    Chi1: %e\n    Chi2: %e\n    Q: %e\n    Chi: %e\n    Ringdown Frequency: %e\n    Damping Time: %e\n",
+           phenom->phase_coefficients.eta, phenom->phase_coefficients.etaInv,
+           phenom->phase_coefficients.eta2, phenom->phase_coefficients.Seta,
+           phenom->phase_coefficients.chi1, phenom->phase_coefficients.chi2,
+           phenom->phase_coefficients.q, phenom->phase_coefficients.chi,
+           phenom->phase_coefficients.ringdown_frequency, phenom->phase_coefficients.damping_time);
+
+    for (int i = 0; i < NUM_PHASE_INSPIRAL_COEFFICIENTS; i++) {
+        printf("    Inspiraling Phase Coefficient %d: %e\n", i, phenom->phase_coefficients.inspiral[i]);
+    }
+
+    for (int i = 0; i < NUM_PHASE_INTERMEDIATE_COEFFICIENTS; i++) {
+        printf("    Intermediate Phase Coefficient %d: %e\n", i, phenom->phase_coefficients.intermediate[i]);
+    }
+
+    for (int i = 0; i < NUM_PHASE_MERGER_RINGDOWN_COEFFICIENTS; i++) {
+        printf("    Merger-Ringdown Phase Coefficient %d: %e\n", i, phenom->phase_coefficients.merger_ringdown[i]);
+    }
+
+    printf("    C1Int: %e\n    C2Int: %e\n    C1MRD: %e\n    C2MRD: %e\n    Intermediate Start Frequency: %e\n    Merger Ringdown Start Frequency: %e\n",
+           phenom->phase_coefficients.C1Int, phenom->phase_coefficients.C2Int,
+           phenom->phase_coefficients.C1MRD, phenom->phase_coefficients.C2MRD,
+           phenom->phase_coefficients.intermediate_start_frequency, phenom->phase_coefficients.merger_ringdown_start_frequency);
+
+    printf("  Phase Inspiraling Prefactors:\n");
+    printf("    Initial Phasing: %e\n    Third: %e\n    Third with LogV: %e\n    Two Thirds: %e\n    One: %e\n    Four Thirds: %e\n    Five Thirds: %e\n    Two: %e\n    LogV: %e\n    Minus Third: %e\n    Minus Two Thirds: %e\n    Minus One: %e\n    Minus Four Thirds: %e\n    Minus Five Thirds: %e\n",
+           phenom->phase_prefactors.initial_phasing, phenom->phase_prefactors.third,
+           phenom->phase_prefactors.third_with_logv, phenom->phase_prefactors.two_thirds,
+           phenom->phase_prefactors.one, phenom->phase_prefactors.four_thirds,
+           phenom->phase_prefactors.five_thirds, phenom->phase_prefactors.two,
+           phenom->phase_prefactors.logv, phenom->phase_prefactors.minus_third,
+           phenom->phase_prefactors.minus_two_thirds, phenom->phase_prefactors.minus_one,
+           phenom->phase_prefactors.minus_four_thirds, phenom->phase_prefactors.minus_five_thirds);
+
+    printf("  PN Phasing Series:\n");
+    for (int i = 0; i <= PN_PHASING_SERIES_MAX_ORDER; i++) {
+        printf("    v[%d]: %e\n    vlogv[%d]: %e\n \n", i, phenom->phasing_series.v[i], i, phenom->phasing_series.vlogv[i]);
+    }
+
+    printf("  Useful Powers:\n");
+    printf("    One: %e\n    Third: %e\n    Two Thirds: %e\n    Four Thirds: %e\n    Five Thirds: %e\n    Two: %e\n    Seven Thirds: %e\n    Eight Thirds: %e\n ",
+           phenom->powers_of_reference_mass.one, phenom->powers_of_reference_mass.third,
+           phenom->powers_of_reference_mass.two_thirds, phenom->powers_of_reference_mass.four_thirds,
+           phenom->powers_of_reference_mass.five_thirds, phenom->powers_of_reference_mass.two,
+           phenom->powers_of_reference_mass.seven_thirds, phenom->powers_of_reference_mass.eight_thirds);
+
+    printf("  Precalculated Phase: %e\n", phenom->precalculated_phase);
+    printf("  Phase Shift: %e\n", phenom->phase_shift);
+}
+
+void printPhenomDVariables(
+    phenom_d_variables_s *variables
+    ) {
+    
+    _printPhenomDVariables<<<1, 1>>>(
+        variables
+    );
+}
+
 extern "C" aproximant_variables_s *initPhenomDVariables(
     const system_properties_s    *system_properties_of,
     const temporal_properties_s  *temporal_properties_of,
@@ -1800,6 +1907,8 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         num_waveforms
     );
     
+    printf("Final Spins: %f \n", final_spins[0]);
+    
     free(final_spins);
     
     temporal_properties_s *temporal_properties_of_g = NULL;
@@ -1825,7 +1934,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         (void**)&num_strain_axis_samples_in_waveform
     );
     
-    const int32_t grid_size = 
+    int32_t grid_size = 
         ((num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
     _calcNumStrainAxisSamples<<<grid_size, BLOCK_SIZE>>>(
@@ -1888,16 +1997,14 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         total_num_frequency_axis_samples,
         (void**)&frequency_axis_values
     );
-        
+      
     frequencyUnit_t *frequency_interval_of_waveform = NULL;
     cudaCallocateDeviceMemory(
         sizeof(frequencyUnit_t), 
         num_waveforms,
         (void**)&frequency_interval_of_waveform
     );
-        
-    printf("Frequency axis values zero for some reason? Unneccisary? \n");
-        
+            
     m_frequency_array_s frequency_axis = 
     {
         .values                       = frequency_axis_values,
@@ -1907,7 +2014,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
             max_num_frequency_axis_samples_per_waveform,
         .total_num_samples            = total_num_frequency_axis_samples
     };
-
+    
     timeUnit_t *time_interval_of_waveform = NULL;
     cudaCallocateDeviceMemory(
         sizeof(timeUnit_t), 
@@ -1940,6 +2047,10 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
             num_waveforms
         );
         
+    printPhenomDVariables(
+        &aproximant_variables_of[0].d
+    );
+        
     cudaFree((void*)ringdown_splines); cudaFree((void*)damping_splines); 
         
     // Construct Waveform Axes:
@@ -1954,6 +2065,14 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         .aproximant_variables_of  = aproximant_variables_of,
         .num_waveforms            = num_waveforms
     };
+    
+    // Init Frequency Axis
+    grid_size = 
+        ((total_num_frequency_axis_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    initFrequencyArray<<<grid_size, BLOCK_SIZE>>>(
+        complex_waveform_axes
+    );
     
     return complex_waveform_axes;
 }
