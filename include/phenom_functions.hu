@@ -1493,8 +1493,8 @@ extern "C" int32_t rearrangeMemoryKernel(
 }
 
 __global__ void _inverseRearrangeMemoryKernel(
-    float         *input, 
-    float         *output, 
+          float   *input, 
+          float   *output, 
     const int32_t  num_waveforms, 
     const int32_t  num_elements_in_subarray
     ) {
@@ -1520,8 +1520,8 @@ __global__ void _inverseRearrangeMemoryKernel(
 }
 
 extern "C" int32_t inverseRearrangeMemoryKernel(
-    float   *input, 
-    float   *output, 
+          float   *input, 
+          float   *output, 
     const int32_t  num_waveforms, 
     const int32_t  num_elements_in_subarray
     ) {

@@ -9,9 +9,17 @@
 // More extra time measured in cycles at the starting frequency:
 #define EXTRA_CYCLES 3.0f
 
-#include "phenomd.h"
+//#include "phenom_d_data.h"
+#include "phenom_d_structures.h"
 #include "phenom_functions.h"
 #include "phenom_d_functions.h"
+
+inline int32_t calcNextPow2(const float n)
+{
+   // Use pow here, not bit-wise shift, as the latter seems to run against an
+   // upper cutoff long before SIZE_MAX, at least on some platforms:
+   return (int32_t) powf(2.0f,ceilf(log2f(n)));
+}
 
 void checkTemporalErrors(
     const temporal_properties_s *temporal_properties,

@@ -54,6 +54,20 @@ void checkStrainNans(
     const int32_t                  num_waveforms
     );
 
+int32_t rearrangeMemoryKernel(
+          cuFloatComplex *input, 
+          cuFloatComplex *output, 
+    const int32_t         num_waveforms, 
+    const int32_t         num_elements_in_subarray
+    );
+
+int32_t inverseRearrangeMemoryKernel(
+          float   *input, 
+          float   *output, 
+    const int32_t  num_waveforms, 
+    const int32_t  num_elements_in_subarray
+    );
+
 static void checkSystemParameters(
     const system_properties_s system_properties
     ) {
