@@ -363,6 +363,7 @@ m_complex_waveform_axes_s cuInspiralFD(
         case D:
         // Call the waveform driver routine:
         
+        
         /*
         printSystemProptiesHost(
             system_properties[0]
@@ -372,7 +373,7 @@ m_complex_waveform_axes_s cuInspiralFD(
             temporal_properties[0]
         );
         */
-        
+
         waveform_axes_fd = 
             cuPhenomDGenerateFD(
                 system_properties,
@@ -381,12 +382,9 @@ m_complex_waveform_axes_s cuInspiralFD(
                 //4
             );
         
-        /*
         printComplexStrain(
-            waveform_axes_fd,
-            num_waveforms
+            waveform_axes_fd
         );
-        */
 
         break;
 
@@ -526,15 +524,15 @@ m_waveform_axes_s cuInspiralTDFromFD(
     // to avoid the end of the waveform wrapping around to the beginning,
     // we shift waveform backwards in time and compensate for this
     // shift by adjusting the epoch:
-    
+
     timeUnit_t time_shifts[num_waveforms];
-    
+
     for (int32_t index = 0; index < num_waveforms; index++)
     {
         time_shifts[index] = temporal_properties[index].extra_time;
 
     }
-    
+
     timeUnit_t *time_shifts_g = NULL;
     cudaToDevice(
         time_shifts, 
@@ -547,7 +545,7 @@ m_waveform_axes_s cuInspiralTDFromFD(
         time_shifts_g
     );
     cudaFree(time_shifts_g);
-            
+                  
     m_waveform_axes_s waveform_axes_td = 
         convertWaveformFDToTD(
             waveform_axes_fd
@@ -780,7 +778,7 @@ void generatePhenomCUDA(
     frequencyUnit_t reference_frequency = initFrequencyHertz(0.0f);
     
     // Init property structures:
-    const int32_t num_waveforms = 1;
+    const int32_t num_waveforms = 2;
     
     system_properties_s   system_properties[num_waveforms];
     temporal_properties_s temporal_properties[num_waveforms];

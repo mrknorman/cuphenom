@@ -389,56 +389,6 @@ extern "C" int32_t performTimeShifts(
     return 0;
 }
 
-/*
-__global__ void initFrequencyArray(
-              frequency_array_s frequency_array, 
-        const int32_t           start_index, 
-        const int32_t           end_index, 
-        const frequencyUnit_t   frequency_interval
-    ) {
-    
-    
-    // Init frequency array:
-    // @param 
-    // @see 
-    // @return void
-    
-    // Assign unique thread index for GPU calculation:
-    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // If not outside array bounds, add value toa array element:
-    if (sample_index < frequency_array.num_samples) 
-	{    
-        frequency_array.values[sample_index].hertz = 
-            (sample_index+start_index)*frequency_interval.hertz;
-    }    
-}
-
-__global__ void initFrequencyArrays(
-              frequency_array_s frequency_array, 
-        const int32_t           start_index, 
-        const int32_t           end_index, 
-        const frequencyUnit_t   frequency_interval
-    ) {
-    
-
-     // Init frequency array:
-     // @param 
-     // @see 
-     // @return void
-    
-    // Assign unique thread index for GPU calculation:
-    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // If not outside array bounds, add value toa array element:
-    if (sample_index < frequency_array.num_samples) 
-	{    
-        frequency_array.values[sample_index].hertz = 
-            (sample_index+start_index)*frequency_interval.hertz;
-    }    
-}
-*/
-
 __device__ __forceinline__ useful_powers_s _initUsefulPowers(
     const float one
     ) {
@@ -953,12 +903,10 @@ __global__ void initFrequencyArray(
         m_complex_waveform_axes_s waveform_axes
     ) {
     
-    /**
-     * Init frequency array:
-     * @param 
-     * @see 
-     * @return void
-     */
+    //Init frequency array:
+    //@param 
+    //@see 
+    //@return void
      
     // Assign unique thread index for GPU calculation:
     const int32_t thread_index = 
@@ -970,26 +918,26 @@ __global__ void initFrequencyArray(
     const int32_t sample_index = 
         (int32_t) thread_index % max_num_samples_per_waveform;
     
-    const temporal_properties_s temporal_properties =
-        waveform_axes.temporal_properties_of[waveform_index];
-        
-    const frequencyUnit_t starting_frequency = 
-        temporal_properties.starting_frequency;
-    const frequencyUnit_t frequency_interval = 
-        temporal_properties.frequency_interval;
-    
-    // Initilise frequency array using the upper and lower bounds:
-    const int32_t start_index = 
-        (int32_t) (starting_frequency.hertz 
-            / frequency_interval.hertz);
-    
     if (
-           (thread_index < waveform_axes.frequency.total_num_samples) 
+           (thread_index < waveform_axes.strain.total_num_samples) 
         && (sample_index < waveform_axes.frequency.num_samples_in_waveform[waveform_index])
     ) {
+        
+        const temporal_properties_s temporal_properties =
+            waveform_axes.temporal_properties_of[waveform_index];
+        
+        const frequencyUnit_t starting_frequency = 
+            temporal_properties.starting_frequency;
+        const frequencyUnit_t frequency_interval = 
+            temporal_properties.frequency_interval;
+    
+        // Initilise frequency array using the upper and lower bounds:
+        const int32_t start_index = 
+            (int32_t) (starting_frequency.hertz 
+                / frequency_interval.hertz);
     
         waveform_axes.frequency.values[thread_index].hertz = 
-            (sample_index+start_index)*frequency_interval.hertz;
+            (float)(sample_index+start_index)*frequency_interval.hertz;
     }    
 }
 
@@ -1284,12 +1232,13 @@ extern "C" void printComplexStrainElement(
 }
     
 extern "C" void printComplexStrain(
-    const m_complex_waveform_axes_s waveform_axes,
-    const int32_t                   num_waveforms
+    const m_complex_waveform_axes_s waveform_axes
     ) {
     
+    // Unpack variables:
     const m_complex_strain_array_s strain_array    = waveform_axes.strain;
     const m_frequency_array_s      frequency_array = waveform_axes.frequency;
+    const int32_t                  num_waveforms   = waveform_axes.num_waveforms;
     
     float* num_samples_in_waveform = NULL;
     cudaToHost(

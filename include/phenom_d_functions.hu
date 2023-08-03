@@ -1477,7 +1477,7 @@ __global__ void _sumPhenomDFrequencies(
                 _initUsefulPowers(
                     total_mass.seconds*
                         waveform_axes_fd.frequency.values[thread_index].hertz
-                );    
+                );
 
             // Calculate amplitude value at current sample index:
             const float amplitude = 
@@ -1513,7 +1513,7 @@ __global__ void _sumPhenomDFrequencies(
                     amplitude_prefactor_0*amplitude,
                     0.0f
                 };
-
+            
             // Calculate strain at current sample_index
             
             waveform_axes_fd.strain.values[offset_index].plus = 
@@ -1833,6 +1833,8 @@ void printPhenomDVariables(
     _printPhenomDVariables<<<1, 1>>>(
         variables
     );
+    
+    cudaDeviceSynchronize();
 }
 
 extern "C" aproximant_variables_s *initPhenomDVariables(
@@ -1974,19 +1976,11 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         num_frequency_axis_samples_in_waveform,
         num_waveforms
     );
-    const int32_t max_num_frequency_axis_samples_per_waveform = 
-        (int32_t) cudaFindMaxHost(
-            num_frequency_axis_samples_in_waveform, 
-            num_waveforms
-        );
-        
-    const int32_t total_num_frequency_axis_samples = 
-        max_num_frequency_axis_samples_per_waveform * num_waveforms;
     
     frequencyUnit_t *frequency_axis_values = NULL;
     cudaCallocateDeviceMemory(
         sizeof(frequencyUnit_t), 
-        total_num_frequency_axis_samples,
+        total_num_strain_axis_samples,
         (void**)&frequency_axis_values
     );
       
@@ -2003,8 +1997,8 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         .interval_of_waveform         = frequency_interval_of_waveform,
         .num_samples_in_waveform      = num_frequency_axis_samples_in_waveform,
         .max_num_samples_per_waveform = 
-            max_num_frequency_axis_samples_per_waveform,
-        .total_num_samples            = total_num_frequency_axis_samples
+            max_num_strain_axis_samples_per_waveform,
+        .total_num_samples            = total_num_strain_axis_samples
     };
     
     timeUnit_t *time_interval_of_waveform = NULL;
@@ -2039,16 +2033,22 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
             num_waveforms
         );
     
-    /* Break in case of emergency
-    printPhenomDVariables(
-        &aproximant_variables_of[0].d
-    );
+    // Break in case of emergency
+    
+    /*
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        printf(" ===== Waveform %i ===== \n", index);
+        printPhenomDVariables(
+            &aproximant_variables_of[index].d
+        );
+    }
     */
      
     cudaFree((void*)ringdown_splines); cudaFree((void*)damping_splines); 
         
     // Construct Waveform Axes:
-    m_complex_waveform_axes_s complex_waveform_axes = 
+    m_complex_waveform_axes_s waveform_axes_fd = 
     {
         .merger_time_for_waveform = merger_time_for_waveform,
         .frequency                = frequency_axis,
@@ -2060,15 +2060,15 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         .num_waveforms            = num_waveforms
     };
     
-    // Init Frequency Axis
+    // Init Frequency Axis (use max strain samples for batching)
     grid_size = 
-        ((total_num_frequency_axis_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
-    
+        ((total_num_strain_axis_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+            
     initFrequencyArray<<<grid_size, BLOCK_SIZE>>>(
-        complex_waveform_axes
+        waveform_axes_fd
     );
     
-    return complex_waveform_axes;
+    return waveform_axes_fd;
 }
 
 #endif

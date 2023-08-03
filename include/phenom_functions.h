@@ -40,8 +40,7 @@ int32_t performTimeShifts(
     );
 
 void printComplexStrain(
-    const m_complex_waveform_axes_s waveform_axes,
-    const int32_t                   num_waveforms
+    const m_complex_waveform_axes_s waveform_axes
     );
 
 void printStrain(
