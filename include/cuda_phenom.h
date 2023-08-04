@@ -381,10 +381,6 @@ m_complex_waveform_axes_s cuInspiralFD(
                 num_waveforms
                 //4
             );
-        
-        printComplexStrain(
-            waveform_axes_fd
-        );
 
         break;
 
@@ -747,6 +743,7 @@ void generatePhenomCUDA(
         .y = 0.0f,
         .z = 0.0f
     };
+    
     companion_s companion_a = 
     {
         .mass              = mass_1,
@@ -778,7 +775,7 @@ void generatePhenomCUDA(
     frequencyUnit_t reference_frequency = initFrequencyHertz(0.0f);
     
     // Init property structures:
-    const int32_t num_waveforms = 2;
+    const int32_t num_waveforms = 11000;
     
     system_properties_s   system_properties[num_waveforms];
     temporal_properties_s temporal_properties[num_waveforms];
@@ -829,11 +826,6 @@ void generatePhenomCUDA(
     free(num_samples_in_waveform_array);
         
     //Rearange memory here:
-    
-    printStrain(
-        waveform_axes_td.strain,
-        num_waveforms
-    );
     
     float2_t *strain = NULL;
     cudaToHost(

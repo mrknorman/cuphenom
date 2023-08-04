@@ -675,11 +675,11 @@ m_waveform_axes_s convertWaveformFDToTD(
         num_waveforms
     );
     
-    const int32_t max_num_samples_in_waveform_td =
+    const int32_t max_num_samples_per_waveform_td =
         2*(waveform_axes_fd.strain.max_num_samples_per_waveform - 1);
         
     const int32_t total_num_samples_td = 
-        max_num_samples_in_waveform_td*num_waveforms;
+        max_num_samples_per_waveform_td*num_waveforms;
                 
     m_waveform_axes_s waveform_axes_td;
     waveform_axes_td.merger_time_for_waveform = 
@@ -698,7 +698,7 @@ m_waveform_axes_s convertWaveformFDToTD(
         (m_strain_array_s){
             .values                       = strain_values,
             .num_samples_in_waveform      = num_samples_in_waveform_td,
-            .max_num_samples_per_waveform = max_num_samples_in_waveform_td,
+            .max_num_samples_per_waveform = max_num_samples_per_waveform_td,
             .total_num_samples            = total_num_samples_td
         };
     
@@ -721,13 +721,13 @@ m_waveform_axes_s convertWaveformFDToTD(
     
     const timeUnit_t waveform_duration = scaleTime(
         waveform_interval,
-        (float) max_num_samples_in_waveform_td
+        (float) max_num_samples_per_waveform_td
     );
     
     cuFloatComplex *temp_strain_values = NULL;
     cudaAllocateDeviceMemory(
         sizeof(cuFloatComplex),
-        waveform_axes_fd.strain.total_num_samples*2,
+        waveform_axes_td.strain.total_num_samples*2,
         (void**)&temp_strain_values
     );
     
