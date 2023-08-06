@@ -333,21 +333,20 @@ __global__ void _performTimeShifts(
                      * waveform_axes.frequency.interval_of_waveform[waveform_index].hertz
                      * num_samples_time_shift[waveform_index]
             };
+            
+            cuFloatComplex exp_shift_c = cudaCExpf(shift_c);
 
-            cuFloatComplex h_plus = 
+            waveform_axes.strain.values[thread_index].plus  = 
                 cuCmulf(
                     waveform_axes.strain.values[thread_index].plus,
-                    cudaCExpf(shift_c)
+                    exp_shift_c
                 );
 
-            cuFloatComplex h_cross = 
+            waveform_axes.strain.values[thread_index].cross = 
                 cuCmulf(
                     waveform_axes.strain.values[thread_index].cross, 
-                    cudaCExpf(shift_c)
+                    exp_shift_c
                 );
-
-            waveform_axes.strain.values[thread_index].plus  = h_plus;
-            waveform_axes.strain.values[thread_index].cross = h_cross;
         }
     }
 }
