@@ -16,41 +16,41 @@ int32_t *calcNumStrainAxisSamples(
     const int32_t                num_waveforms
     );
 
-m_waveform_axes_s inclinationAdjust(
-    m_waveform_axes_s waveform_axes_td
+waveform_axes_s inclinationAdjust(
+    waveform_axes_s waveform_axes_td
     );
 
-m_waveform_axes_s polarisationRotation(
-    m_waveform_axes_s  waveform_axes_td
+waveform_axes_s polarisationRotation(
+    waveform_axes_s  waveform_axes_td
     );
 
 int32_t applyPolarization(
-    const m_complex_waveform_axes_s waveform_axes
+    const complex_waveform_axes_s waveform_axes
     );
 
 int32_t taperWaveform(
-    const m_complex_waveform_axes_s  waveform_axes,
-    const frequencyUnit_t           *starting_frequency,
-    const frequencyUnit_t           *minimum_frequency
+    const complex_waveform_axes_s  waveform_axes,
+    const frequencyUnit_t         *starting_frequency,
+    const frequencyUnit_t         *minimum_frequency
     );
 
 int32_t performTimeShifts(
-          m_complex_waveform_axes_s  waveform_axes,
-    const timeUnit_t                *shift_duration
+          complex_waveform_axes_s  waveform_axes,
+    const timeUnit_t              *shift_duration
     );
 
 void printComplexStrain(
-    const m_complex_waveform_axes_s waveform_axes
+    const complex_waveform_axes_s waveform_axes
     );
 
 void printStrain(
-    const m_strain_array_s strain_array,
-    const int32_t          num_waveforms
+    const strain_array_s strain_array,
+    const int32_t        num_waveforms
     );
 
 void checkStrainNans(
-    const m_complex_strain_array_s strain_array,
-    const int32_t                  num_waveforms
+    const complex_strain_array_s strain_array,
+    const int32_t                num_waveforms
     );
 
 int32_t rearrangeMemoryKernel(
@@ -643,8 +643,8 @@ temporal_properties_s initTemporalProperties(
     return temporal_properties;
 }
 
-m_waveform_axes_s convertWaveformFDToTD(
-    const m_complex_waveform_axes_s waveform_axes_fd
+waveform_axes_s convertWaveformFDToTD(
+    const complex_waveform_axes_s waveform_axes_fd
     ) {
     
     const int32_t num_waveforms = waveform_axes_fd.num_waveforms;
@@ -681,7 +681,7 @@ m_waveform_axes_s convertWaveformFDToTD(
     const int32_t total_num_samples_td = 
         max_num_samples_per_waveform_td*num_waveforms;
                 
-    m_waveform_axes_s waveform_axes_td;
+    waveform_axes_s waveform_axes_td;
     waveform_axes_td.merger_time_for_waveform = 
         waveform_axes_fd.merger_time_for_waveform;
         
@@ -695,7 +695,7 @@ m_waveform_axes_s convertWaveformFDToTD(
     waveform_axes_td.time = 
         waveform_axes_fd.time;
     waveform_axes_td.strain =
-        (m_strain_array_s){
+        (strain_array_s){
             .values                       = strain_values,
             .num_samples_in_waveform      = num_samples_in_waveform_td,
             .max_num_samples_per_waveform = max_num_samples_per_waveform_td,

@@ -279,9 +279,9 @@ __device__ pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
 
 
 __global__ void _convertDurationsIntoSamples(
-    const m_complex_waveform_axes_s  waveform_axes,
-    const timeUnit_t                *shift_durations,
-          float                     *num_samples_time_shift
+    const complex_waveform_axes_s  waveform_axes,
+    const timeUnit_t              *shift_durations,
+          float                   *num_samples_time_shift
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -301,8 +301,8 @@ __global__ void _convertDurationsIntoSamples(
 }
 
 __global__ void _performTimeShifts(
-              m_complex_waveform_axes_s  waveform_axes, 
-        const float                     *num_samples_time_shift
+              complex_waveform_axes_s  waveform_axes, 
+        const float                   *num_samples_time_shift
     ) {
     
     /**
@@ -352,8 +352,8 @@ __global__ void _performTimeShifts(
 }
 
 extern "C" int32_t performTimeShifts(
-          m_complex_waveform_axes_s  waveform_axes,
-    const timeUnit_t                *shift_durations
+          complex_waveform_axes_s  waveform_axes,
+    const timeUnit_t              *shift_durations
     ) {
     
     int32_t grid_size = 
@@ -415,9 +415,9 @@ __device__ __forceinline__ useful_powers_s _initUsefulPowers(
 }
 
 __global__ void _calculateInclinationFactors(
-    const m_waveform_axes_s    waveform_axes,
-          float               *cross_factor_array,
-          float               *plus_factor_array
+    const waveform_axes_s  waveform_axes,
+          float           *cross_factor_array,
+          float           *plus_factor_array
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -437,9 +437,9 @@ __global__ void _calculateInclinationFactors(
 }
 
 __global__ void _inclinationAdjust(
-          m_waveform_axes_s  waveform_axes,
-    const float             *cross_factor_array,
-    const float             *plus_factor_array
+          waveform_axes_s  waveform_axes,
+    const float           *cross_factor_array,
+    const float           *plus_factor_array
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -462,8 +462,8 @@ __global__ void _inclinationAdjust(
     }    
 }
 
-extern "C" m_waveform_axes_s inclinationAdjust(
-    m_waveform_axes_s waveform_axes
+extern "C" waveform_axes_s inclinationAdjust(
+    waveform_axes_s waveform_axes
     ) {
     
     /* ADD BACK IN FOR GPS TIME OF MERGER
@@ -525,9 +525,9 @@ extern "C" m_waveform_axes_s inclinationAdjust(
 }
 
 __global__ void _calculatePolarisationFactors(
-    const m_waveform_axes_s    waveform_axes,
-          float               *cos_polarization_array,
-          float               *sin_polarization_array
+    const waveform_axes_s    waveform_axes,
+          float             *cos_polarization_array,
+          float             *sin_polarization_array
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -544,9 +544,9 @@ __global__ void _calculatePolarisationFactors(
 }
 
 __global__ void _polarisationRotation(
-          m_waveform_axes_s waveform_axes,
-    const float            *cos_polarization_array,
-    const float            *sin_polarization_array
+          waveform_axes_s waveform_axes,
+    const float          *cos_polarization_array,
+    const float          *sin_polarization_array
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -582,8 +582,8 @@ __global__ void _polarisationRotation(
     }  
 }
 
-extern "C" m_waveform_axes_s polarisationRotation(
-          m_waveform_axes_s  waveform_axes
+extern "C" waveform_axes_s polarisationRotation(
+    waveform_axes_s  waveform_axes
     ) {
     
     //R.C.: here's the reference explaining why we perform this rotation https://dcc.ligo.org/LIGO-G1900275
@@ -626,7 +626,7 @@ extern "C" m_waveform_axes_s polarisationRotation(
 }
 
 __global__ void _calcPolarizationCoefficients(
-    const m_complex_waveform_axes_s  waveform_axes,
+    const complex_waveform_axes_s  waveform_axes,
           cuFloatComplex            *cos_coefficients,
           cuFloatComplex            *sin_coefficients
     ) {
@@ -654,9 +654,9 @@ __global__ void _calcPolarizationCoefficients(
 }
 
 __global__ void _applyPolarization(
-    const m_complex_waveform_axes_s  waveform_axes,
-    const cuFloatComplex            *cos_coefficients,
-    const cuFloatComplex            *sin_coefficients
+    const complex_waveform_axes_s  waveform_axes,
+    const cuFloatComplex          *cos_coefficients,
+    const cuFloatComplex          *sin_coefficients
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -693,7 +693,7 @@ __global__ void _applyPolarization(
 }
 
 extern "C" int32_t applyPolarization(
-    const m_complex_waveform_axes_s  waveform_axes
+    const complex_waveform_axes_s waveform_axes
     ) {
     
     cuFloatComplex *cos_coefficients = NULL;
@@ -734,11 +734,11 @@ extern "C" int32_t applyPolarization(
 }
 
 __global__ void _calculateTaperIndicies(
-    const m_complex_waveform_axes_s  waveform_axes,
-    const frequencyUnit_t           *starting_frequencies,
-    const frequencyUnit_t           *ending_frequencies,
-          int32_t                   *start_indicies,
-          int32_t                   *end_indicies
+    const complex_waveform_axes_s  waveform_axes,
+    const frequencyUnit_t         *starting_frequencies,
+    const frequencyUnit_t         *ending_frequencies,
+          int32_t                 *start_indicies,
+          int32_t                 *end_indicies
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -770,9 +770,9 @@ __global__ void _calculateTaperIndicies(
 }
 
 __global__ void _taperWaveform(
-    const m_complex_waveform_axes_s  waveform_axes,
-    const int32_t                   *start_indicies,
-    const int32_t                   *end_indicies
+    const complex_waveform_axes_s  waveform_axes,
+    const int32_t                 *start_indicies,
+    const int32_t                 *end_indicies
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -825,7 +825,7 @@ __global__ void _taperWaveform(
 }
 
 __global__ void _zeroNyquistFrequency(
-    const m_complex_waveform_axes_s waveform_axes
+    const complex_waveform_axes_s waveform_axes
     ) {
     
     const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -844,9 +844,9 @@ __global__ void _zeroNyquistFrequency(
 }
 
 extern "C" int32_t taperWaveform(
-    const m_complex_waveform_axes_s  waveform_axes,
-    const frequencyUnit_t           *starting_frequencies,
-    const frequencyUnit_t           *minimum_frequencies
+    const complex_waveform_axes_s  waveform_axes,
+    const frequencyUnit_t         *starting_frequencies,
+    const frequencyUnit_t         *minimum_frequencies
     ) {
     
     //
@@ -899,7 +899,7 @@ extern "C" int32_t taperWaveform(
 }
 
 __global__ void initFrequencyArray(
-        m_complex_waveform_axes_s waveform_axes
+        complex_waveform_axes_s waveform_axes
     ) {
     
     //Init frequency array:
@@ -1231,13 +1231,13 @@ extern "C" void printComplexStrainElement(
 }
     
 extern "C" void printComplexStrain(
-    const m_complex_waveform_axes_s waveform_axes
+    const complex_waveform_axes_s waveform_axes
     ) {
     
     // Unpack variables:
-    const m_complex_strain_array_s strain_array    = waveform_axes.strain;
-    const m_frequency_array_s      frequency_array = waveform_axes.frequency;
-    const int32_t                  num_waveforms   = waveform_axes.num_waveforms;
+    const complex_strain_array_s strain_array    = waveform_axes.strain;
+    const frequency_array_s      frequency_array = waveform_axes.frequency;
+    const int32_t                num_waveforms   = waveform_axes.num_waveforms;
     
     float* num_samples_in_waveform = NULL;
     cudaToHost(
@@ -1301,8 +1301,8 @@ extern "C" void printStrainElement(
 }
     
 extern "C" void printStrain(
-    const m_strain_array_s strain_array,
-    const int32_t          num_waveforms
+    const strain_array_s strain_array,
+    const int32_t        num_waveforms
     ) {
     
     float* num_samples_in_waveform = NULL;
@@ -1345,8 +1345,8 @@ extern "C" void printStrain(
 
 
 extern "C" void checkStrainNans(
-    const m_complex_strain_array_s strain_array,
-    const int32_t                  num_waveforms
+    const complex_strain_array_s strain_array,
+    const int32_t                num_waveforms
     ) {
     
     float* num_samples_in_waveform = NULL;

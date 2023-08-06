@@ -86,7 +86,7 @@ void checkTemporalErrors(
     }   
 }
 
-m_complex_waveform_axes_s cuPhenomDGenerateFD(
+complex_waveform_axes_s cuPhenomDGenerateFD(
     const system_properties_s   *system_properties,
           temporal_properties_s *temporal_properties,
     const int32_t                num_waveforms
@@ -99,7 +99,7 @@ m_complex_waveform_axes_s cuPhenomDGenerateFD(
         num_waveforms
     );
     
-    m_complex_waveform_axes_s waveform_axes_fd = 
+    complex_waveform_axes_s waveform_axes_fd = 
         initPhenomDWaveformAxes(
             temporal_properties,
             system_properties,
@@ -162,7 +162,7 @@ m_complex_waveform_axes_s cuPhenomDGenerateFD(
     return waveform_axes_fd;
 }
 
-m_complex_waveform_axes_s cuInspiralFD(
+complex_waveform_axes_s cuInspiralFD(
     const system_properties_s   *system_properties,
     const temporal_properties_s *original_temporal_properties,
     const int32_t                num_waveforms,
@@ -357,7 +357,7 @@ m_complex_waveform_axes_s cuInspiralFD(
         
     // Generate the waveform in the frequency domain starting at 
     // new_starting_frequency:
-    m_complex_waveform_axes_s waveform_axes_fd;
+    complex_waveform_axes_s waveform_axes_fd;
     switch (approximant)
     {
         case D:
@@ -491,7 +491,7 @@ m_complex_waveform_axes_s cuInspiralFD(
     return waveform_axes_fd;
 }
 
-m_waveform_axes_s cuInspiralTDFromFD(
+waveform_axes_s cuInspiralTDFromFD(
           system_properties_s   *system_properties,
           temporal_properties_s *temporal_properties,
     const int32_t                num_waveforms,
@@ -507,7 +507,7 @@ m_waveform_axes_s cuInspiralTDFromFD(
         temporal_properties[index].frequency_interval = initFrequencyHertz(0.0f);
     }
     
-    m_complex_waveform_axes_s waveform_axes_fd =
+    complex_waveform_axes_s waveform_axes_fd =
         cuInspiralFD(
             system_properties,
             temporal_properties,
@@ -542,7 +542,7 @@ m_waveform_axes_s cuInspiralTDFromFD(
     );
     cudaFree(time_shifts_g);
                   
-    m_waveform_axes_s waveform_axes_td = 
+    waveform_axes_s waveform_axes_td = 
         convertWaveformFDToTD(
             waveform_axes_fd
         );        
@@ -603,7 +603,7 @@ m_waveform_axes_s cuInspiralTDFromFD(
     return waveform_axes_td;
 }
 
-m_waveform_axes_s generateInspiral(
+waveform_axes_s generateInspiral(
     system_properties_s   *system_properties,
     temporal_properties_s *temporal_properties, 
     const int32_t          num_waveforms,
@@ -648,7 +648,7 @@ m_waveform_axes_s generateInspiral(
     }
     
     // Generate the waveform in the time domain starting at starting frequency:
-    m_waveform_axes_s waveform_axes_td = 
+    waveform_axes_s waveform_axes_td = 
         cuInspiralTDFromFD(
             system_properties,
             temporal_properties,
@@ -730,7 +730,6 @@ void generatePhenomCUDA(
         (int32_t)floor(sample_rate.hertz*duration.seconds);
     
     // Setup companion structures:
-    
     spin_t spin_1 = 
     {
         .x = 0.0f,
@@ -805,14 +804,14 @@ void generatePhenomCUDA(
             );
     }
     
-    m_waveform_axes_s waveform_axes_td = 
+    waveform_axes_s waveform_axes_td = 
         generateInspiral(
             system_properties,
             temporal_properties,
             num_waveforms,
             approximant
         );
-    
+        
     float *num_samples_in_waveform_array = NULL;
     cudaToHost(
         (void*)waveform_axes_td.strain.num_samples_in_waveform, 
@@ -826,7 +825,6 @@ void generatePhenomCUDA(
     free(num_samples_in_waveform_array);
         
     //Rearange memory here:
-    
     float2_t *strain = NULL;
     cudaToHost(
         (void*)&waveform_axes_td.strain.values[
@@ -836,13 +834,6 @@ void generatePhenomCUDA(
         (void**) &strain
     );
     cudaFree(waveform_axes_td.strain.values);
-    
-    /*
-    for (int32_t index = 0; index < num_samples; index++)
-    {
-        printf("Plus: %f. Cross %f. \n", strain[index].x, strain[index].y);
-    }
-    */
         
     if (waveform_axes_td.strain.max_num_samples_per_waveform < num_samples) 
     {    

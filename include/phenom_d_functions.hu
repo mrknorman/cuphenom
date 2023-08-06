@@ -1376,9 +1376,9 @@ __global__ void sumFrequenciesPhenomTidal(
 }
 
 __global__ void calculateInclinationFactors(
-    const m_complex_waveform_axes_s   waveform_axes_fd,
-          float                      *cross_factor, 
-          float                      *plus_factor
+    const complex_waveform_axes_s   waveform_axes_fd,
+          float                    *cross_factor, 
+          float                    *plus_factor
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -1401,9 +1401,9 @@ __global__ void calculateInclinationFactors(
 }
 
 __global__ void _sumPhenomDFrequencies(
-          m_complex_waveform_axes_s  waveform_axes_fd,
-    const float                     *plus_factors,
-    const float                     *cross_factors\
+          complex_waveform_axes_s  waveform_axes_fd,
+    const float                   *plus_factors,
+    const float                   *cross_factors\
     ) {
     
     //
@@ -1536,7 +1536,7 @@ __global__ void _sumPhenomDFrequencies(
 }
 
 extern "C" int32_t sumPhenomDFrequencies(
-    m_complex_waveform_axes_s waveform_axes_fd
+    complex_waveform_axes_s waveform_axes_fd
     ) {
     
     float *cross_factors = NULL;
@@ -1867,7 +1867,7 @@ extern "C" aproximant_variables_s *initPhenomDVariables(
     return aproximant_variables_of;
 }
 
-extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
+extern "C" complex_waveform_axes_s initPhenomDWaveformAxes(
           temporal_properties_s *temporal_properties_of,
     const system_properties_s   *system_properties_of,
     const int32_t                num_waveforms
@@ -1954,7 +1954,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         (void**)&strain_axis_values
     );
     
-    m_complex_strain_array_s strain_axis = 
+    complex_strain_array_s strain_axis = 
     {
         .values                       = strain_axis_values,
         .num_samples_in_waveform      = num_strain_axis_samples_in_waveform,
@@ -1991,7 +1991,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         (void**)&frequency_interval_of_waveform
     );
             
-    m_frequency_array_s frequency_axis = 
+    frequency_array_s frequency_axis = 
     {
         .values                       = frequency_axis_values,
         .interval_of_waveform         = frequency_interval_of_waveform,
@@ -2008,7 +2008,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         (void**)&time_interval_of_waveform
     );
     
-    m_time_array_s empty_time_axis = 
+    time_array_s empty_time_axis = 
     {
         .values                       = NULL,
         .interval_of_waveform         = time_interval_of_waveform,
@@ -2048,7 +2048,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
     cudaFree((void*)ringdown_splines); cudaFree((void*)damping_splines); 
         
     // Construct Waveform Axes:
-    m_complex_waveform_axes_s waveform_axes_fd = 
+    complex_waveform_axes_s waveform_axes_fd = 
     {
         .merger_time_for_waveform = merger_time_for_waveform,
         .frequency                = frequency_axis,

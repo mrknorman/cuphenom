@@ -103,7 +103,7 @@ float *pythonWrapperPhenomD(
             );
     }
     
-    m_waveform_axes_s waveform_axes_td = 
+    waveform_axes_s waveform_axes_td = 
         generateInspiral(
             system_properties,
             temporal_properties,
