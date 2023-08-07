@@ -1401,7 +1401,7 @@ __global__ void calculateInclinationFactors(
 }
 
 __global__ void _sumPhenomDFrequencies(
-          complex_waveform_axes_s  waveform_axes_fd,
+          complex_waveform_axes_s  waveform_axes,
     const float                   *plus_factors,
     const float                   *cross_factors\
     ) {
@@ -1415,12 +1415,23 @@ __global__ void _sumPhenomDFrequencies(
     
     // Assign unique thread index for GPU calculation:
     const int32_t thread_index = blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t max_num_samples_per_waveform = 
+        waveform_axes.strain.max_num_samples_per_waveform;
+    const int32_t waveform_index = (int32_t)
+        floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t num_samples_per_state = 
+        max_num_samples_per_waveform/NUM_POLARIZATION_STATES;
+    const int32_t state_index =
+         (int32_t) floorf((float)thread_index / (float) num_samples_per_state);
+    const int32_t polarization_index = 
+        state_index % NUM_POLARIZATION_STATES;
     
     // If not outside array bounds sum pheom frequencies:
-    if (thread_index < waveform_axes_fd.frequency.total_num_samples) 
+    if ((thread_index < waveform_axes.frequency.total_num_samples) &&
+        (polarization_index == 0)) // Only run for one state
     {   
         const int32_t max_num_samples_per_waveform = 
-            waveform_axes_fd.frequency.max_num_samples_per_waveform;
+            waveform_axes.frequency.max_num_samples_per_waveform;
         const int32_t waveform_index = (int32_t)
             floorf((float)thread_index / (float)max_num_samples_per_waveform);
         const int32_t frequency_index = 
@@ -1428,18 +1439,18 @@ __global__ void _sumPhenomDFrequencies(
             
         if (
             frequency_index < 
-            waveform_axes_fd.frequency.num_samples_in_waveform[waveform_index]
+            waveform_axes.frequency.num_samples_in_waveform[waveform_index]
         ) {
             const int32_t num_strain_samples = 
-                waveform_axes_fd.strain.max_num_samples_per_waveform;
+                waveform_axes.strain.max_num_samples_per_waveform;
                 
             const massUnit_t total_mass =
-                waveform_axes_fd.
+                waveform_axes.
                     system_properties_of[waveform_index].
                         total_mass;
                     
             const phenom_d_variables_s variables = 
-                waveform_axes_fd.
+                waveform_axes.
                     aproximant_variables_of[waveform_index].d;
 
             const int32_t offset = variables.offset;
@@ -1476,7 +1487,7 @@ __global__ void _sumPhenomDFrequencies(
             const useful_powers_s mass_frequency = 
                 _initUsefulPowers(
                     total_mass.seconds*
-                        waveform_axes_fd.frequency.values[thread_index].hertz
+                        waveform_axes.frequency.values[thread_index].hertz
                 );
 
             // Calculate amplitude value at current sample index:
@@ -1516,19 +1527,22 @@ __global__ void _sumPhenomDFrequencies(
             
             // Calculate strain at current sample_index
             
-            waveform_axes_fd.strain.values[offset_index].plus = 
+            const int32_t plus_index = offset_index;
+            const int32_t cross_index = offset_index + num_samples_per_state;
+            
+            waveform_axes.strain.values[plus_index] = 
                 cuCmulf(amplitude_c,cudaCExpf(phase_c));
 
             // Calcualte plus and cross polarizations:
-            waveform_axes_fd.strain.values[offset_index].cross = 
+            waveform_axes.strain.values[cross_index] = 
                 cuCmulf(
-                    waveform_axes_fd.strain.values[offset_index].plus, 
+                    waveform_axes.strain.values[plus_index], 
                     (cuFloatComplex) {0.0f, -1*cross_factors[waveform_index]}
                 );
 
-            waveform_axes_fd.strain.values[offset_index].plus =
+            waveform_axes.strain.values[plus_index] =
                 cuCmulf(
-                    waveform_axes_fd.strain.values[offset_index].plus,
+                    waveform_axes.strain.values[plus_index],
                     (cuFloatComplex) {plus_factors[waveform_index], 0.0}
                 );
         }
@@ -1536,43 +1550,43 @@ __global__ void _sumPhenomDFrequencies(
 }
 
 extern "C" int32_t sumPhenomDFrequencies(
-    complex_waveform_axes_s waveform_axes_fd
+    complex_waveform_axes_s waveform_axes
     ) {
     
     float *cross_factors = NULL;
     cudaAllocateDeviceMemory(
         sizeof(float), 
-        waveform_axes_fd.num_waveforms,
+        waveform_axes.num_waveforms,
         (void**)&cross_factors
     );
     
     float *plus_factors = NULL;
     cudaAllocateDeviceMemory(
         sizeof(float), 
-        waveform_axes_fd.num_waveforms,
+        waveform_axes.num_waveforms,
         (void**)&plus_factors
     );
     
     int32_t grid_size = 
     (
-        (waveform_axes_fd.num_waveforms + BLOCK_SIZE - 1) 
+        (waveform_axes.num_waveforms + BLOCK_SIZE - 1) 
         / BLOCK_SIZE
     );
     
     calculateInclinationFactors<<<grid_size, BLOCK_SIZE>>>(
-        waveform_axes_fd,
+        waveform_axes,
         cross_factors, 
         plus_factors
     );
     
     grid_size = 
         (
-            (waveform_axes_fd.frequency.total_num_samples + BLOCK_SIZE - 1) 
+            (waveform_axes.frequency.total_num_samples + BLOCK_SIZE - 1) 
             / BLOCK_SIZE
         );
     
     _sumPhenomDFrequencies<<<grid_size, BLOCK_SIZE>>>(
-        waveform_axes_fd,
+        waveform_axes,
         plus_factors,
         cross_factors
     );
@@ -1947,9 +1961,9 @@ extern "C" complex_waveform_axes_s initPhenomDWaveformAxes(
     int32_t total_num_strain_axis_samples = 
         max_num_strain_axis_samples_per_waveform * num_waveforms;
     
-    complex_strain_element_c *strain_axis_values = NULL;
+    cuFloatComplex *strain_axis_values = NULL;
     cudaCallocateDeviceMemory(
-        sizeof(complex_strain_element_c), 
+        sizeof(cuFloatComplex), 
         total_num_strain_axis_samples,
         (void**)&strain_axis_values
     );

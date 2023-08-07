@@ -21,18 +21,21 @@ LAL_LINK    = -L/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/li
 PYTHON_LINK = -L/home/michael.norman/.conda/envs/dragon/lib/python3.10/config-3.10-x86_64-linux-gnu -L/home/michael.norman/.conda/envs/dragon/lib -lpython3.10 -Wl,-rpath,/home/michael.norman/.conda/envs/dragon/lib -Wl,-rpath,/cvmfs/oasis.opensciencegrid.org/ligo/sw/conda/envs/igwn-py39/lib/
 MKL_LINK = -L/opt/intel/oneapi/mkl/2023.1.0/lib/intel64 -Wl,-rpath,/opt/intel/oneapi/mkl/2023.1.0/lib/intel64 -lmkl_rt
 
-
 GSL_LINK = -L/usr/lib -lgsl -lgslcblas
 LINKER_FLAGS = -lcrypt -lpthread -ldl -lutil -lrt -lm -lmkl_rt $(GSL_LINK)
 
 #OBJ_NAME specifies the name of our exectuable
 OBJ_NAME   = ./bin/main.out
 
+#This ensures the bin directory exists
+bin:
+	@mkdir -p $@
+
 #This is the target that compiles our executable
-all : $(OBJS)
+all : $(OBJS) | bin
 	$(CC) $(OBJS) -pg -lcurand -g -lcufft $(INCLUDE) $(PYTHON_INCLUDE) $(LAL_INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LAL_LINK) $(PYTHON_LINK) $(LINKER_FLAGS) -o $(OBJ_NAME)
 shared :	
 	$(CC) ./src/cuphenom_functions.c ./src/cuda_functions.cu -shared -fPIC  -pg -lcurand -lcufft $(INCLUDE) $(WARNING_FLAG) $(NVIDIA_FLAGS) $(LINKER_FLAGS) $(MKL_LINK) -o ./py/libphenom.so
-test :	
+test : | bin
 	$(CC) ./src/test_cuda.c ./src/cuda_functions.cu -pg -lcurand -g -lcufft $(INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LINKER_FLAGS) $(MKL_LINK) -o ./bin/test_cuda.out
 	

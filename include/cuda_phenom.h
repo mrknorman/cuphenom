@@ -363,7 +363,6 @@ complex_waveform_axes_s cuInspiralFD(
         case D:
         // Call the waveform driver routine:
         
-        
         /*
         printSystemProptiesHost(
             system_properties[0]
@@ -483,7 +482,7 @@ complex_waveform_axes_s cuInspiralFD(
         waveform_axes_fd,
         time_shifts_g
     );
-    
+     
     cudaFree(time_shifts_g);
         
     free(temporal_properties);
@@ -655,7 +654,6 @@ waveform_axes_s generateInspiral(
             num_waveforms,
             approximant
         );
-        
     
     // Set inclination to original: i don't know if this changes?
     for (int32_t index = 0; index < num_waveforms; index++)
@@ -774,7 +772,7 @@ void generatePhenomCUDA(
     frequencyUnit_t reference_frequency = initFrequencyHertz(0.0f);
     
     // Init property structures:
-    const int32_t num_waveforms = 11000;
+    const int32_t num_waveforms = 22000;
     
     system_properties_s   system_properties[num_waveforms];
     temporal_properties_s temporal_properties[num_waveforms];
@@ -803,7 +801,7 @@ void generatePhenomCUDA(
                 approximant
             );
     }
-    
+        
     waveform_axes_s waveform_axes_td = 
         generateInspiral(
             system_properties,
@@ -811,7 +809,7 @@ void generatePhenomCUDA(
             num_waveforms,
             approximant
         );
-        
+    
     float *num_samples_in_waveform_array = NULL;
     cudaToHost(
         (void*)waveform_axes_td.strain.num_samples_in_waveform, 

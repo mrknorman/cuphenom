@@ -390,8 +390,8 @@ temporal_properties_s fixReferenceFrequency(
 }
 
 timeUnit_t InspiralChirpTimeBound(
-    const frequencyUnit_t        starting_frequency, 
-    const system_properties_s    system_properties
+    const frequencyUnit_t     starting_frequency, 
+    const system_properties_s system_properties
 ) {
     
     // Unpack companion structs for readability:
@@ -684,23 +684,9 @@ waveform_axes_s convertWaveformFDToTD(
     waveform_axes_s waveform_axes_td;
     waveform_axes_td.merger_time_for_waveform = 
         waveform_axes_fd.merger_time_for_waveform;
-        
-    strain_element_t *strain_values = NULL;
-    cudaAllocateDeviceMemory(
-        sizeof(strain_element_t),
-        total_num_samples_td,
-        (void**)&strain_values
-    );
-        
+    
     waveform_axes_td.time = 
         waveform_axes_fd.time;
-    waveform_axes_td.strain =
-        (strain_array_s){
-            .values                       = strain_values,
-            .num_samples_in_waveform      = num_samples_in_waveform_td,
-            .max_num_samples_per_waveform = max_num_samples_per_waveform_td,
-            .total_num_samples            = total_num_samples_td
-        };
     
     waveform_axes_td.temporal_properties_of  = waveform_axes_fd.temporal_properties_of;
     waveform_axes_td.system_properties_of    = waveform_axes_fd.system_properties_of;
@@ -724,35 +710,24 @@ waveform_axes_s convertWaveformFDToTD(
         (float) max_num_samples_per_waveform_td
     );
     
-    cuFloatComplex *temp_strain_values = NULL;
-    cudaAllocateDeviceMemory(
-        sizeof(cuFloatComplex),
-        waveform_axes_td.strain.total_num_samples*2,
-        (void**)&temp_strain_values
+    const int32_t num_samples_per_state = 
+        waveform_axes_fd.strain.max_num_samples_per_waveform / NUM_POLARIZATION_STATES;
+    const int32_t num_transforms = num_waveforms*NUM_POLARIZATION_STATES;
+     
+    cudaIRfft(
+        num_samples_per_state,
+        num_transforms,
+	    waveform_duration.seconds,
+        waveform_axes_fd.strain.values
     );
     
-    rearrangeMemoryKernel(
-        (cuFloatComplex*)waveform_axes_fd.strain.values,
-        temp_strain_values,
-        num_waveforms, 
-        waveform_axes_fd.strain.max_num_samples_per_waveform
-    );
-    cudaFree(waveform_axes_fd.strain.values);
-        
-    cudaIRfft(
-        waveform_axes_td.strain.max_num_samples_per_waveform,
-        num_waveforms*2,
-	    waveform_duration.seconds,
-        temp_strain_values
-    );
-        
-    inverseRearrangeMemoryKernel(
-        (float*)temp_strain_values, 
-        (float*)waveform_axes_td.strain.values, 
-        num_waveforms, 
-        waveform_axes_td.strain.max_num_samples_per_waveform
-    );
-    cudaFree(temp_strain_values);
+    waveform_axes_td.strain =
+        (strain_array_s){
+            .values                       = (float*)waveform_axes_fd.strain.values,
+            .num_samples_in_waveform      = num_samples_in_waveform_td,
+            .max_num_samples_per_waveform = max_num_samples_per_waveform_td,
+            .total_num_samples            = total_num_samples_td
+        };
     
     return waveform_axes_td;
 }

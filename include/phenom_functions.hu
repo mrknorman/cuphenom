@@ -277,7 +277,6 @@ __device__ pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
     return phasing_series;
 }
 
-
 __global__ void _convertDurationsIntoSamples(
     const complex_waveform_axes_s  waveform_axes,
     const timeUnit_t              *shift_durations,
@@ -319,13 +318,15 @@ __global__ void _performTimeShifts(
         waveform_axes.strain.max_num_samples_per_waveform;
     const int32_t waveform_index = (int32_t)
         floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t num_samples_per_state = 
+        max_num_samples_per_waveform/NUM_POLARIZATION_STATES;
     const int32_t sample_index = 
-        (int32_t) thread_index % max_num_samples_per_waveform;
+        thread_index % num_samples_per_state;
     
-    if (waveform_index < waveform_axes.num_waveforms)
+    if (waveform_index < waveform_axes.num_waveforms) 
     {
         // If not outside array bounds, add value toa array element:
-        if (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index]) 
+        if (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index]/NUM_POLARIZATION_STATES) 
         {    
             cuFloatComplex shift_c  = (cuFloatComplex) {
                 0.0f,
@@ -334,18 +335,10 @@ __global__ void _performTimeShifts(
                      * num_samples_time_shift[waveform_index]
             };
             
-            cuFloatComplex exp_shift_c = cudaCExpf(shift_c);
-
-            waveform_axes.strain.values[thread_index].plus  = 
+            waveform_axes.strain.values[thread_index]  = 
                 cuCmulf(
-                    waveform_axes.strain.values[thread_index].plus,
-                    exp_shift_c
-                );
-
-            waveform_axes.strain.values[thread_index].cross = 
-                cuCmulf(
-                    waveform_axes.strain.values[thread_index].cross, 
-                    exp_shift_c
+                    waveform_axes.strain.values[thread_index],
+                    cudaCExpf(shift_c)
                 );
         }
     }
@@ -449,16 +442,28 @@ __global__ void _inclinationAdjust(
         waveform_axes.strain.max_num_samples_per_waveform;
     const int32_t waveform_index = (int32_t)
         floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t num_samples_per_state = 
+        max_num_samples_per_waveform/NUM_POLARIZATION_STATES;
     const int32_t sample_index = 
-        (int32_t) thread_index % max_num_samples_per_waveform;
+        (int32_t) thread_index % num_samples_per_state;        
+    const int32_t state_index =
+        (int32_t) floorf((float)thread_index / (float)num_samples_per_state);
+    const int32_t polarization_index = 
+        state_index % NUM_POLARIZATION_STATES;
     
     // If not outside array bounds, add value toa array element:
     if (
            (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index] / NUM_POLARIZATION_STATES)
     ) {
-        waveform_axes.strain.values[thread_index].plus  *= plus_factor_array[waveform_index];
-        waveform_axes.strain.values[thread_index].cross *= cross_factor_array[waveform_index];
+        if (polarization_index == 0) 
+        {
+            waveform_axes.strain.values[thread_index]  *= plus_factor_array[waveform_index];
+        }
+        else
+        {
+            waveform_axes.strain.values[thread_index] *= cross_factor_array[waveform_index];
+        }    
     }    
 }
 
@@ -556,13 +561,19 @@ __global__ void _polarisationRotation(
         waveform_axes.strain.max_num_samples_per_waveform;
     const int32_t waveform_index = (int32_t)
         floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t num_samples_per_state = 
+        max_num_samples_per_waveform/NUM_POLARIZATION_STATES;
     const int32_t sample_index = 
-        (int32_t) thread_index % max_num_samples_per_waveform;
-        
+        thread_index % num_samples_per_state;       
+    const int32_t state_index =
+        (int32_t) floorf((float)thread_index / (float)num_samples_per_state);
+    const int32_t polarization_index = 
+        state_index % NUM_POLARIZATION_STATES;
         
     if (
            (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index]/NUM_POLARIZATION_STATES)
+        && (polarization_index == 0) // Only run once
     ) {
         
         const float cos_polarization = 
@@ -570,14 +581,17 @@ __global__ void _polarisationRotation(
         
         const float sin_polarization = 
             sin_polarization_array[waveform_index];
+        
+        const int32_t plus_index  = thread_index;
+        const int32_t cross_index = thread_index + num_samples_per_state;   
     
-        const float temp_plus = waveform_axes.strain.values[thread_index].plus;
-        waveform_axes.strain.values[thread_index].plus = 
-            (cos_polarization*waveform_axes.strain.values[thread_index].plus)
-            + (sin_polarization*waveform_axes.strain.values[thread_index].cross);
+        const float temp_plus = waveform_axes.strain.values[plus_index];
+        waveform_axes.strain.values[plus_index] = 
+            (cos_polarization*waveform_axes.strain.values[plus_index])
+            + (sin_polarization*waveform_axes.strain.values[cross_index]);
 
-        waveform_axes.strain.values[thread_index].cross = 
-            (cos_polarization*waveform_axes.strain.values[thread_index].cross) 
+        waveform_axes.strain.values[cross_index] = 
+            (cos_polarization*waveform_axes.strain.values[cross_index]) 
             - (sin_polarization*temp_plus);
     }  
 }
@@ -666,25 +680,36 @@ __global__ void _applyPolarization(
         waveform_axes.strain.max_num_samples_per_waveform;
     const int32_t waveform_index = (int32_t)
         floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t num_samples_per_state = 
+        max_num_samples_per_waveform/NUM_POLARIZATION_STATES;
     const int32_t sample_index = 
-        (int32_t) thread_index % max_num_samples_per_waveform;
+        (int32_t) thread_index % num_samples_per_state;
+    const int32_t state_index =
+        (int32_t) floorf((float)thread_index / (float)num_samples_per_state);
+    const int32_t polarization_index = 
+        state_index % NUM_POLARIZATION_STATES;
     
     if (
            (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        && ((sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        && (polarization_index == 0)) // Only run once
     ) {
+    
+        const int32_t plus_index = thread_index;
+        const int32_t cross_index = thread_index + num_samples_per_state;
+    
         const cuFloatComplex original_plus = 
-            waveform_axes.strain.values[thread_index].plus;
+            waveform_axes.strain.values[plus_index];
         const cuFloatComplex original_cross = 
-            waveform_axes.strain.values[thread_index].cross;
+            waveform_axes.strain.values[cross_index];
             
-        waveform_axes.strain.values[thread_index].plus =
+        waveform_axes.strain.values[plus_index] =
             cuCaddf(
               cuCmulf(cos_coefficients[waveform_index], original_plus),
               cuCmulf(sin_coefficients[waveform_index], original_cross)
             );
         
-        waveform_axes.strain.values[thread_index].cross = 
+        waveform_axes.strain.values[cross_index] = 
             cuCsubf(
               cuCmulf(cos_coefficients[waveform_index], original_cross),
               cuCmulf(sin_coefficients[waveform_index], original_plus)
@@ -783,8 +808,10 @@ __global__ void _taperWaveform(
     
     const int32_t waveform_index = (int32_t)
         floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t num_samples_per_state = 
+        max_num_samples_per_waveform/NUM_POLARIZATION_STATES;
     const int32_t sample_index = 
-        (int32_t) thread_index % max_num_samples_per_waveform;
+        (int32_t) thread_index % num_samples_per_state;
     
     if (waveform_index < waveform_axes.num_waveforms)
     {
@@ -799,8 +826,7 @@ __global__ void _taperWaveform(
             const cuFloatComplex complex_zero =
                 (cuFloatComplex) {0.0f, 0.0f};
 
-            waveform_axes.strain.values[thread_index].plus  = complex_zero;
-            waveform_axes.strain.values[thread_index].cross = complex_zero;
+            waveform_axes.strain.values[thread_index] = complex_zero;
         }
         else if (sample_index < end_index)
         {
@@ -816,29 +842,31 @@ __global__ void _taperWaveform(
             const cuFloatComplex complex_scalar = 
                 (cuFloatComplex) {taper_scalar, 0.0f};
 
-            waveform_axes.strain.values[thread_index].plus = 
-                cuCmulf(waveform_axes.strain.values[thread_index].plus, complex_scalar);
-            waveform_axes.strain.values[thread_index].cross = 
-                cuCmulf(waveform_axes.strain.values[thread_index].cross, complex_scalar);
+            waveform_axes.strain.values[thread_index] = 
+                cuCmulf(waveform_axes.strain.values[thread_index], complex_scalar);
         }
     }
 }
 
-__global__ void _zeroNyquistFrequency(
+__global__ void _zeroNyquistFrequencies(
     const complex_waveform_axes_s waveform_axes
     ) {
     
     const int32_t waveform_index = blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t max_num_samples_per_waveform = waveform_axes.strain.max_num_samples_per_waveform;
     
     if (waveform_index < waveform_axes.num_waveforms)
     {
-        const int32_t num_samples = 
-            waveform_axes.strain.num_samples_in_waveform[waveform_index];
+        const int32_t num_samples_per_state = 
+            waveform_axes.strain.num_samples_in_waveform[waveform_index] / NUM_POLARIZATION_STATES;
+        
+        const int32_t plus_index = waveform_index*max_num_samples_per_waveform + num_samples_per_state - 1;
+        const int32_t cross_index = waveform_index*max_num_samples_per_waveform + 2*num_samples_per_state - 1;
         
         // Make sure Nyquist frequency is zero:
-        waveform_axes.strain.values[num_samples - 1].plus  = 
+        waveform_axes.strain.values[plus_index]  = 
             (cuFloatComplex) {0.0f, 0.0f};
-        waveform_axes.strain.values[num_samples - 1].cross =
+        waveform_axes.strain.values[cross_index] =
             (cuFloatComplex) {0.0f, 0.0f};
     }
 }
@@ -886,9 +914,12 @@ extern "C" int32_t taperWaveform(
         ((waveform_axes.strain.total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
     _taperWaveform<<<grid_size, BLOCK_SIZE>>>
         (waveform_axes, start_indicies, end_indicies);
+        
+    grid_size = 
+        ((waveform_axes.num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
-    //Needs to be updated to every waveform
-    _zeroNyquistFrequency<<<1, 1>>>(
+    // Zero Nyquist Frequencies
+    _zeroNyquistFrequencies<<<grid_size, BLOCK_SIZE>>>(
         waveform_axes
     );
     
@@ -915,10 +946,10 @@ __global__ void initFrequencyArray(
     const int32_t waveform_index = (int32_t)
         floorf((float)thread_index / (float)max_num_samples_per_waveform);
     const int32_t sample_index = 
-        (int32_t) thread_index % max_num_samples_per_waveform;
+        (int32_t) thread_index% max_num_samples_per_waveform;
     
     if (
-           (thread_index < waveform_axes.strain.total_num_samples) 
+           (thread_index < (waveform_axes.strain.total_num_samples / NUM_POLARIZATION_STATES))
         && (sample_index < waveform_axes.frequency.num_samples_in_waveform[waveform_index])
     ) {
         
@@ -1072,6 +1103,8 @@ __global__ void _calcNumStrainAxisSamples(
             // We actually want to have the length be a power of 2 + 1.
         }
         
+        num_strain_axis_samples[waveform_index] *= NUM_POLARIZATION_STATES;
+        
         // Check frequency bounds:
         if (starting_frequency.hertz <= 0.0f)
         {
@@ -1217,18 +1250,6 @@ extern "C" int32_t calcNumFrequencyAxisSamples(
     return max_num_frequency_axis_samples;
 }
 
-extern "C" void printComplexStrainElement(
-    const complex_strain_element_c strain_element
-    ) {
-    
-    printf(
-        "Plus: %e + %ei. Cross: %e + %ei. \n", 
-        strain_element.plus.x, 
-        strain_element.plus.y,
-        strain_element.cross.x, 
-        strain_element.cross.y
-    );
-}
     
 extern "C" void printComplexStrain(
     const complex_waveform_axes_s waveform_axes
@@ -1247,10 +1268,10 @@ extern "C" void printComplexStrain(
         (void**)&num_samples_in_waveform
     ); 
     
-    complex_strain_element_c* strain_values = NULL;
+    cuFloatComplex* strain_values = NULL;
     cudaToHost(
         (void*)strain_array.values, 
-        sizeof(complex_strain_element_c),
+        sizeof(cuFloatComplex),
         strain_array.total_num_samples,
         (void**)&strain_values
     ); 
@@ -1268,19 +1289,25 @@ extern "C" void printComplexStrain(
     for (int32_t waveform_index = 0; waveform_index < num_waveforms; waveform_index++)
     {
     
-        const int32_t num_samples = (int32_t) num_samples_in_waveform[waveform_index];
-        printf("Waveform %i. Num samples %i. \n", waveform_index, num_samples);
+        const int32_t num_samples_per_state = (int32_t) num_samples_in_waveform[waveform_index] / NUM_POLARIZATION_STATES;
+        printf("Waveform %i. Num samples %i. \n", waveform_index, num_samples_per_state);
         
-        for (int32_t sample_index = 0; sample_index < num_samples; sample_index++)
+        for (int32_t sample_index = 0; sample_index < num_samples_per_state; sample_index++)
         {
-            const complex_strain_element_c strain_element = 
-                strain_values[waveform_index*max_num_samples_per_waveform + sample_index];
+            const int32_t plus_index = waveform_index*max_num_samples_per_waveform + sample_index;
+            const int32_t cross_index = plus_index + num_samples_per_state;
                 
             const frequencyUnit_t frequency = 
-                frequency_values[waveform_index*max_num_samples_per_waveform + sample_index];
+                frequency_values[plus_index];
             
-            printf("%i.%i: %f:", waveform_index, sample_index, frequency.hertz);
-            printComplexStrainElement(strain_element);
+            printf(
+                "%i.%i: %f: Plus: %e + %ei. Cross: %e + %ei. \n", 
+                waveform_index, sample_index, frequency.hertz,
+                strain_values[plus_index].x, 
+                strain_values[plus_index].y,
+                strain_values[cross_index].x, 
+                strain_values[cross_index].y
+            );
         }
     }
     
@@ -1289,17 +1316,6 @@ extern "C" void printComplexStrain(
     free(num_samples_in_waveform);
 }
 
-extern "C" void printStrainElement(
-    const strain_element_t strain_element
-    ) {
-    
-    printf(
-        "Plus: %e. Cross: %e\n", 
-        strain_element.plus,
-        strain_element.cross
-    );
-}
-    
 extern "C" void printStrain(
     const strain_array_s strain_array,
     const int32_t        num_waveforms
@@ -1313,10 +1329,10 @@ extern "C" void printStrain(
         (void**)&num_samples_in_waveform
     ); 
     
-    strain_element_t* strain_values = NULL;
+    float* strain_values = NULL;
     cudaToHost(
         (void*)strain_array.values, 
-        sizeof(strain_element_t),
+        sizeof(float),
         strain_array.total_num_samples,
         (void**)&strain_values
     ); 
@@ -1325,17 +1341,20 @@ extern "C" void printStrain(
     
     for (int32_t waveform_index = 0; waveform_index < num_waveforms; waveform_index++)
     {
-    
-        const int32_t num_samples = (int32_t) num_samples_in_waveform[waveform_index];
-        printf("Waveform %i. Num samples %i. \n", waveform_index, num_samples);
+        const int32_t num_samples_per_state = (int32_t) num_samples_in_waveform[waveform_index] / NUM_POLARIZATION_STATES;
+        printf("Waveform %i. Num samples %i. \n", waveform_index, num_samples_per_state);
         
-        for (int32_t sample_index = 0; sample_index < num_samples; sample_index++)
+        for (int32_t sample_index = 0; sample_index < num_samples_per_state; sample_index++)
         {
-            const strain_element_t strain_element = 
-                strain_values[waveform_index*max_num_samples_per_waveform + sample_index];
+            const int32_t plus_index = waveform_index*max_num_samples_per_waveform + sample_index;
+            const int32_t cross_index = plus_index + num_samples_per_state;
             
-            printf("%i.%i:", waveform_index, sample_index);
-            printStrainElement(strain_element);
+            printf(
+                "%i.%i: Plus: %e. Cross: %e \n", 
+                waveform_index, sample_index,
+                strain_values[plus_index], 
+                strain_values[cross_index]
+            );
         }
     }
     
@@ -1357,10 +1376,10 @@ extern "C" void checkStrainNans(
         (void**)&num_samples_in_waveform
     ); 
     
-    complex_strain_element_c* strain_values = NULL;
+    cuFloatComplex* strain_values = NULL;
     cudaToHost(
         (void*)strain_array.values, 
-        sizeof(complex_strain_element_c),
+        sizeof(cuFloatComplex),
         strain_array.total_num_samples,
         (void**)&strain_values
     ); 
@@ -1372,18 +1391,25 @@ extern "C" void checkStrainNans(
     for (int32_t waveform_index = 0; waveform_index < num_waveforms; waveform_index++)
     {
     
-        const int32_t num_samples = (int32_t) num_samples_in_waveform[waveform_index];
-        printf("Waveform %i. Num samples %i. \n", waveform_index, num_samples);
-        
-        for (int32_t sample_index = 0; sample_index < max_num_samples_per_waveform; sample_index++) //num_samples
+        const int32_t num_samples_per_state = (int32_t) num_samples_in_waveform[waveform_index];
+        printf("Waveform %i. Num samples %i. \n", waveform_index, num_samples_per_state);
+                
+        for (int32_t sample_index = 0; sample_index < num_samples_per_state; sample_index++) //num_samples
         {
-            complex_strain_element_c strain_element = strain_values[waveform_index*max_num_samples_per_waveform + sample_index];
+            const int32_t plus_index = waveform_index*max_num_samples_per_waveform + sample_index;
+            const int32_t cross_index = waveform_index*max_num_samples_per_waveform + num_samples_per_state + sample_index;
             
-            if (((isnan(strain_element.plus.x) || isnan(strain_element.plus.y))
-                || isnan(strain_element.cross.x)) || isnan(strain_element.cross.y))
+            if (((isnan(strain_values[plus_index].x) || isnan(strain_values[cross_index].y))
+                || isnan(strain_values[cross_index].x)) || isnan(strain_values[cross_index].y))
             {
-                printf("%i.%i:", waveform_index, sample_index);
-                printComplexStrainElement(strain_element);
+                printf(
+                    "%i.%i: Plus: %e + %ei. Cross: %e + %ei. \n", 
+                    waveform_index, sample_index,
+                    strain_values[plus_index].x, 
+                    strain_values[plus_index].y,
+                    strain_values[cross_index].x, 
+                    strain_values[cross_index].y
+                );
             }
         }
     }
@@ -1391,99 +1417,5 @@ extern "C" void checkStrainNans(
     free(strain_values);
     free(num_samples_in_waveform);
 }  
-
-__global__ void _rearrangeMemoryKernel(
-          cuFloatComplex *input, 
-          cuFloatComplex *output, 
-    const int32_t         num_waveforms, 
-    const int32_t         num_elements_in_subarray
-    ) {
-    
-    const int32_t thread_index = threadIdx.x + blockDim.x * blockIdx.x;
-
-    // This kernel rearranges memory assuming there is one thread for each element.
-    if(thread_index < num_waveforms*num_elements_in_subarray*2) 
-    {
-        const int32_t waveform_index = thread_index / (num_elements_in_subarray*2);
-        const int32_t sample_index   = thread_index % (num_elements_in_subarray*2);
-
-        int32_t new_index = 0;
-        if(sample_index % 2 == 0) 
-        { // Plus components.
-            new_index = waveform_index*2*num_elements_in_subarray + sample_index/2;
-        } 
-        else 
-        { // Cross components.
-            new_index = (waveform_index*2+1)*num_elements_in_subarray + sample_index/2;
-        }
-
-        output[new_index] = input[thread_index];
-    }
-}
-
-extern "C" int32_t rearrangeMemoryKernel(
-          cuFloatComplex *input, 
-          cuFloatComplex *output, 
-    const int32_t         num_waveforms, 
-    const int32_t         num_elements_in_subarray
-    ) {
-
-    const int32_t grid_size = (num_waveforms*num_elements_in_subarray*2 + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    
-    _rearrangeMemoryKernel<<<grid_size, BLOCK_SIZE>>>(
-        input, 
-        output, 
-        num_waveforms, 
-        num_elements_in_subarray
-    );
-    
-    return 0;
-}
-
-__global__ void _inverseRearrangeMemoryKernel(
-          float   *input, 
-          float   *output, 
-    const int32_t  num_waveforms, 
-    const int32_t  num_elements_in_subarray
-    ) {
-    
-    const int32_t thread_index = threadIdx.x + blockDim.x * blockIdx.x;
-
-    if(thread_index < num_waveforms*num_elements_in_subarray*2) {
-        const int32_t waveform_index = thread_index / (num_elements_in_subarray*2);
-        const int32_t sample_index   = thread_index % (num_elements_in_subarray*2);
-
-        int32_t new_index = 0;
-        if(sample_index < num_elements_in_subarray) 
-        { // Real components.
-            new_index = waveform_index*num_elements_in_subarray*2 + sample_index*2;
-        } 
-        else 
-        { // Transformed imaginary components.
-            new_index = waveform_index*num_elements_in_subarray*2 + (sample_index - num_elements_in_subarray)*2 + 1;
-        }
-
-        output[new_index] = input[thread_index];
-    }
-}
-
-extern "C" int32_t inverseRearrangeMemoryKernel(
-          float   *input, 
-          float   *output, 
-    const int32_t  num_waveforms, 
-    const int32_t  num_elements_in_subarray
-    ) {
-
-    const int32_t grid_size = (num_waveforms*num_elements_in_subarray*2 + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    
-    _inverseRearrangeMemoryKernel<<<grid_size, BLOCK_SIZE>>>(
-        input, 
-        output, 
-        num_waveforms, 
-        num_elements_in_subarray
-    );
-    
-    return 0;
-}
 
 #endif
