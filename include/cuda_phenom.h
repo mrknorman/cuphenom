@@ -173,15 +173,13 @@ complex_waveform_axes_s cuInspiralFD(
     const size_t temporal_array_size = 
         sizeof(temporal_properties_s) * (size_t)num_waveforms;
         
-    temporal_properties_s *temporal_properties = 
-        (temporal_properties_s*) malloc(temporal_array_size);
-    
-    temporal_properties = 
-        memcpy(
-            (void*)temporal_properties, 
-            (void*)original_temporal_properties, 
-            temporal_array_size
-        );
+    temporal_properties_s temporal_properties[num_waveforms];
+        
+    memcpy(
+        (void*)temporal_properties, 
+        (void*)original_temporal_properties, 
+        temporal_array_size
+    );
     
     timeUnit_t      time_intervals          [num_waveforms];
     frequencyUnit_t new_starting_frequencies[num_waveforms];
@@ -485,7 +483,6 @@ complex_waveform_axes_s cuInspiralFD(
     );
     
     cudaFree(time_shifts_g);
-    free(temporal_properties);
     
     return waveform_axes_fd;
 }
@@ -608,7 +605,6 @@ waveform_axes_s generateInspiral(
     const int32_t          num_waveforms,
     const approximant_e    approximant               
     ) {
-    
     // Hard coded constants:
     
     // Starting frequency is overwritten below, so keep original value:
@@ -714,19 +710,54 @@ waveform_axes_s generateInspiral(
     return waveform_axes_td;
 }
 
-void generatePhenomCUDA(
-    const approximant_e     approximant,
-    const massUnit_t        mass_1, 
-    const massUnit_t        mass_2, 
-    const frequencyUnit_t   sample_rate, 
-    const timeUnit_t        duration, 
-    const angularUnit_t     inclination, 
-    const lengthUnit_t      distance, 
-          float2_t       **ret_strain
+waveform_axes_s generateCroppedInspiral(
+          system_properties_s   *system_properties,
+          temporal_properties_s *temporal_properties,
+    const frequencyUnit_t        sample_rate, 
+    const timeUnit_t             duration, 
+    const int32_t                num_waveforms,
+    const approximant_e          approximant
     ) {
     
     const int32_t num_samples = 
         (int32_t)floor(sample_rate.hertz*duration.seconds);
+    
+    waveform_axes_s waveform_axes = 
+        generateInspiral(
+            system_properties,
+            temporal_properties,
+            num_waveforms,
+            approximant
+        );
+        
+    // Crop unneccisary samples:
+    waveform_axes = cropAxes(
+        waveform_axes, 
+        num_samples
+    );
+        
+    if (waveform_axes.strain.max_num_samples_per_waveform < num_samples) 
+    {    
+        fprintf(
+            stderr, 
+            "Warning! Cuphenom not generating waveforms of desired num_samples."
+            "\n"
+        );
+    }
+    
+    return waveform_axes;
+}
+
+void generatePhenomCUDA(
+    const approximant_e       approximant,
+    const massUnit_t          mass_1, 
+    const massUnit_t          mass_2, 
+    const frequencyUnit_t     sample_rate, 
+    const timeUnit_t          duration, 
+    const angularUnit_t       inclination, 
+    const lengthUnit_t        distance, 
+          strain_element_t  **ret_strain
+    ) {
     
     // Setup companion structures:
     spin_t spin_1 = 
@@ -773,7 +804,7 @@ void generatePhenomCUDA(
     frequencyUnit_t reference_frequency = initFrequencyHertz(0.0f);
     
     // Init property structures:
-    const int32_t num_waveforms = 3;
+    const int32_t num_waveforms = 11000;
     
     system_properties_s   system_properties[num_waveforms];
     temporal_properties_s temporal_properties[num_waveforms];
@@ -804,42 +835,29 @@ void generatePhenomCUDA(
     }
     
     waveform_axes_s waveform_axes = 
-        generateInspiral(
+        generateCroppedInspiral(
             system_properties,
             temporal_properties,
+            sample_rate, 
+            duration, 
             num_waveforms,
             approximant
         );
-        
-    //Rearange memory here:
-    
-    waveform_axes = cropAxes(
-        waveform_axes, 
-        num_samples
-    );
-    
     
     strain_element_t *strain = NULL;
     cudaToHost(
-        (void*)&waveform_axes.strain.values, 
+        (void*)waveform_axes.strain.values, 
         sizeof(strain_element_t),
         waveform_axes.strain.total_num_samples,
-        (void**) &strain
+        (void**)&strain
     );
     
     //Free axis
-    cudaFree(waveform_axes.strain.values);
-        
-    if (waveform_axes.strain.max_num_samples_per_waveform < num_samples) 
-    {    
-        fprintf(
-            stderr, 
-            "Warning! Cuphenom not generating waveforms of desired num_samples."
-            "\n"
-        );
-    }
+    freeWaveformAxes(waveform_axes);
 
     *ret_strain = strain;
 }
+
+
 
 #endif

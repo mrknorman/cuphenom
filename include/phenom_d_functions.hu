@@ -1873,7 +1873,7 @@ extern "C" complex_waveform_axes_s initPhenomDWaveformAxes(
     const int32_t                num_waveforms
     ) {
     
-    float* final_spins = (float*)malloc(sizeof(float)*(size_t)num_waveforms);
+    float final_spins[num_waveforms];
     for (int32_t index = 0; index < num_waveforms; index++)
     {
         final_spins[index] = calcFinalSpin(system_properties_of[index]); 
@@ -1902,8 +1902,6 @@ extern "C" complex_waveform_axes_s initPhenomDWaveformAxes(
         final_spins,
         num_waveforms
     );
-        
-    free(final_spins);
     
     temporal_properties_s *temporal_properties_of_g = NULL;
     cudaToDevice(

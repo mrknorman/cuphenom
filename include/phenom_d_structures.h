@@ -330,25 +330,25 @@ typedef union{
 
 typedef struct
 {
-    timeUnit_t               *merger_time_for_waveform;
+    timeUnit_t             *merger_time_for_waveform;
     frequency_array_s       frequency;
     time_array_s            time;
     complex_strain_array_s  strain;
-    temporal_properties_s    *temporal_properties_of;
-    system_properties_s      *system_properties_of;
-    aproximant_variables_s   *aproximant_variables_of;
-    int32_t                   num_waveforms;
+    temporal_properties_s  *temporal_properties_of;
+    system_properties_s    *system_properties_of;
+    aproximant_variables_s *aproximant_variables_of;
+    int32_t                 num_waveforms;
 } complex_waveform_axes_s;
 
 typedef struct
 {
-    timeUnit_t               *merger_time_for_waveform;
+    timeUnit_t             *merger_time_for_waveform;
     time_array_s            time;
     strain_array_s          strain;
-    temporal_properties_s    *temporal_properties_of;
-    system_properties_s      *system_properties_of;
-    aproximant_variables_s   *aproximant_variables_of;
-    int32_t                   num_waveforms;
+    temporal_properties_s  *temporal_properties_of;
+    system_properties_s    *system_properties_of;
+    aproximant_variables_s *aproximant_variables_of;
+    int32_t                 num_waveforms;
 } waveform_axes_s;
 
 #endif

@@ -1486,7 +1486,7 @@ extern "C" int32_t inverseRearrangeMemoryKernel(
     return 0;
 }
 
-__global__ void _getLastSamples(
+__global__ void _cropAxes(
           waveform_axes_s   waveform_axes, 
           strain_element_t *output,
     const int32_t           num_samples_needed
@@ -1528,21 +1528,25 @@ extern "C" waveform_axes_s cropAxes(
     const int32_t num_waveforms =
          waveform_axes.num_waveforms;
     
-    strain_element_t* reduced_array = 
-        (strain_element_t*)malloc(sizeof(strain_element_t)*num_samples_needed*num_waveforms);
+    strain_element_t* cropped_array = NULL;
+    cudaAllocateDeviceMemory(
+        num_waveforms*num_samples_needed,
+        sizeof(strain_element_t),
+        (void**)&cropped_array
+    );
     
     const int32_t grid_size = 
         (total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE;
     
-    _getLastSamples<<<grid_size, BLOCK_SIZE>>>(
+    _cropAxes<<<grid_size, BLOCK_SIZE>>>(
         waveform_axes, 
-        reduced_array,
+        cropped_array,
         num_samples_needed
     );
         
     cudaFree(waveform_axes.strain.values);
     
-    waveform_axes.strain.values            = reduced_array;
+    waveform_axes.strain.values            = cropped_array;
     waveform_axes.strain.total_num_samples = num_waveforms*num_samples_needed;
     
     return waveform_axes;

@@ -654,28 +654,14 @@ waveform_axes_s convertWaveformFDToTD(
     
     const int32_t num_waveforms = waveform_axes_fd.num_waveforms;
     
-    //Need to copy this.
-    float *num_samples_in_waveform_td = NULL;
-    
-    cudaAllocateDeviceMemory(
-        sizeof(float),
-        num_waveforms,
-        (void**)&num_samples_in_waveform_td
-    );
-    hostCudaMemCpy(
-        num_samples_in_waveform_td,
-        waveform_axes_fd.strain.num_samples_in_waveform, 
-        num_waveforms
-    );
-    
     // Get new num_samples_per waveform:
     hostCudaAddValue(
-        num_samples_in_waveform_td, 
+        waveform_axes_fd.strain.num_samples_in_waveform, 
         -1.0, 
         num_waveforms
     );
     hostCudaMultiplyByValue(
-        num_samples_in_waveform_td, 
+        waveform_axes_fd.strain.num_samples_in_waveform, 
         2.0, 
         num_waveforms
     );
@@ -702,7 +688,7 @@ waveform_axes_s convertWaveformFDToTD(
     waveform_axes_td.strain =
         (strain_array_s){
             .values                       = strain_values,
-            .num_samples_in_waveform      = num_samples_in_waveform_td,
+            .num_samples_in_waveform      = waveform_axes_fd.strain.num_samples_in_waveform,
             .max_num_samples_per_waveform = max_num_samples_per_waveform_td,
             .total_num_samples            = total_num_samples_td
         };
@@ -742,8 +728,12 @@ waveform_axes_s convertWaveformFDToTD(
         num_waveforms, 
         waveform_axes_fd.strain.max_num_samples_per_waveform
     );
+    
     cudaFree(waveform_axes_fd.strain.values);
-        
+    cudaFree(waveform_axes_fd.frequency.num_samples_in_waveform);
+    cudaFree(waveform_axes_fd.frequency.values);
+    cudaFree(waveform_axes_fd.frequency.interval_of_waveform);
+    
     cudaIRfft(
         waveform_axes_td.strain.max_num_samples_per_waveform,
         num_waveforms*2,
@@ -1109,5 +1099,25 @@ void printTemporalProptiesHost(
     printf("Total Time Upper Bound: %f s. \n", temporal_properties.total_time_upper_bound.seconds);
     printf("===== \n");
 }    
+
+void freeWaveformAxes(
+    waveform_axes_s waveform_axes
+    ){
+    
+    cudaFree(waveform_axes.merger_time_for_waveform);
+    
+    // Free time array:
+    cudaFree(waveform_axes.time.values);
+    cudaFree(waveform_axes.time.interval_of_waveform);
+    cudaFree(waveform_axes.time.num_samples_in_waveform);
+    
+    // Free strain array:
+    cudaFree(waveform_axes.strain.values);
+    cudaFree(waveform_axes.strain.num_samples_in_waveform);
+    
+    cudaFree(waveform_axes.temporal_properties_of);
+    cudaFree(waveform_axes.system_properties_of);
+    cudaFree(waveform_axes.aproximant_variables_of);    
+}
 
 #endif
