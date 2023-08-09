@@ -17,25 +17,59 @@ int32_t *calcNumStrainAxisSamples(
     );
 
 waveform_axes_s inclinationAdjust(
-    const system_properties_s system_properties,
-          waveform_axes_s      waveform_axes_td
+    waveform_axes_s waveform_axes_td
     );
 
 waveform_axes_s polarisationRotation(
-    const float           polarization,
-          waveform_axes_s waveform_axes_td
+    waveform_axes_s  waveform_axes_td
     );
 
 int32_t applyPolarization(
-    const complex_waveform_axes_s waveform_axes,
-    const float                   polarization
+    const complex_waveform_axes_s waveform_axes
     );
 
 int32_t taperWaveform(
-    const complex_waveform_axes_s waveform_axes,
-    const float                   starting_frequency,
-    const float                   minimum_frequency,
-    const float                   frequency_interval
+    const complex_waveform_axes_s  waveform_axes,
+    const frequencyUnit_t         *starting_frequency,
+    const frequencyUnit_t         *minimum_frequency
+    );
+
+int32_t performTimeShifts(
+          complex_waveform_axes_s  waveform_axes,
+    const timeUnit_t              *shift_duration
+    );
+
+void printComplexStrain(
+    const complex_waveform_axes_s waveform_axes
+    );
+
+void printStrain(
+    const strain_array_s strain_array,
+    const int32_t        num_waveforms
+    );
+
+void checkStrainNans(
+    const complex_strain_array_s strain_array,
+    const int32_t                num_waveforms
+    );
+
+int32_t rearrangeMemoryKernel(
+          cuFloatComplex *input, 
+          cuFloatComplex *output, 
+    const int32_t         num_waveforms, 
+    const int32_t         num_elements_in_subarray
+    );
+
+int32_t inverseRearrangeMemoryKernel(
+          float   *input, 
+          float   *output, 
+    const int32_t  num_waveforms, 
+    const int32_t  num_elements_in_subarray
+    );
+
+waveform_axes_s cropAxes(
+          waveform_axes_s waveform_axes, 
+    const int32_t         num_samples_needed
     );
 
 static void checkSystemParameters(
@@ -279,11 +313,6 @@ system_properties_s initBinarySystem(
     
     return system_properties;
 }
-
-int32_t performTimeShift(
-          complex_waveform_axes_s waveform_axes,
-    const timeUnit_t              shift_duration
-    );
 
 inline float TaylorT2Timing_0PNCoeff(
     const massUnit_t total_mass,
@@ -623,20 +652,102 @@ waveform_axes_s convertWaveformFDToTD(
     const complex_waveform_axes_s waveform_axes_fd
     ) {
     
-    const int32_t num_td_samples = 
-        2 * (waveform_axes_fd.strain.num_samples - 1);
-        
-    waveform_axes_s waveform_axes_td;
-    waveform_axes_td.time.interval = waveform_axes_fd.time.interval;
-    waveform_axes_td.strain.num_samples = num_td_samples;
-    waveform_axes_td.strain.values = NULL;
+    const int32_t num_waveforms = waveform_axes_fd.num_waveforms;
     
-    cudaInterlacedIRFFT(
-        num_td_samples,
-	    (float)num_td_samples * waveform_axes_fd.time.interval.seconds,
-        (cuFloatComplex*) waveform_axes_fd.strain.values,
-        (float**)&waveform_axes_td.strain.values
-    );    
+    // Get new num_samples_per waveform:
+    hostCudaAddValue(
+        waveform_axes_fd.strain.num_samples_in_waveform, 
+        -1.0, 
+        num_waveforms
+    );
+    hostCudaMultiplyByValue(
+        waveform_axes_fd.strain.num_samples_in_waveform, 
+        2.0, 
+        num_waveforms
+    );
+    
+    const int32_t max_num_samples_per_waveform_td =
+        2*(waveform_axes_fd.strain.max_num_samples_per_waveform - 1);
+        
+    const int32_t total_num_samples_td = 
+        max_num_samples_per_waveform_td*num_waveforms;
+                
+    waveform_axes_s waveform_axes_td;
+    waveform_axes_td.merger_time_for_waveform = 
+        waveform_axes_fd.merger_time_for_waveform;
+        
+    strain_element_t *strain_values = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(strain_element_t),
+        total_num_samples_td,
+        (void**)&strain_values
+    );
+        
+    waveform_axes_td.time = 
+        waveform_axes_fd.time;
+    waveform_axes_td.strain =
+        (strain_array_s){
+            .values                       = strain_values,
+            .num_samples_in_waveform      = waveform_axes_fd.strain.num_samples_in_waveform,
+            .max_num_samples_per_waveform = max_num_samples_per_waveform_td,
+            .total_num_samples            = total_num_samples_td
+        };
+    
+    waveform_axes_td.temporal_properties_of  = waveform_axes_fd.temporal_properties_of;
+    waveform_axes_td.system_properties_of    = waveform_axes_fd.system_properties_of;
+    waveform_axes_td.aproximant_variables_of = waveform_axes_fd.aproximant_variables_of;
+    waveform_axes_td.num_waveforms           = waveform_axes_fd.num_waveforms;
+    
+    timeUnit_t *waveform_interval_array = NULL;
+    cudaToHost(
+        (void*)waveform_axes_fd.time.interval_of_waveform, 
+        sizeof(timeUnit_t),
+        1,
+        (void**)&waveform_interval_array
+    );
+    
+    // Assume all waveforms have same time interval
+    const timeUnit_t waveform_interval = waveform_interval_array[0];
+    free(waveform_interval_array);
+    
+    const timeUnit_t waveform_duration = scaleTime(
+        waveform_interval,
+        (float) max_num_samples_per_waveform_td
+    );
+    
+    cuFloatComplex *temp_strain_values = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(cuFloatComplex),
+        waveform_axes_td.strain.total_num_samples*2,
+        (void**)&temp_strain_values
+    );
+    
+    rearrangeMemoryKernel(
+        (cuFloatComplex*)waveform_axes_fd.strain.values,
+        temp_strain_values,
+        num_waveforms, 
+        waveform_axes_fd.strain.max_num_samples_per_waveform
+    );
+    
+    cudaFree(waveform_axes_fd.strain.values);
+    cudaFree(waveform_axes_fd.frequency.num_samples_in_waveform);
+    cudaFree(waveform_axes_fd.frequency.values);
+    cudaFree(waveform_axes_fd.frequency.interval_of_waveform);
+    
+    cudaIRfft(
+        waveform_axes_td.strain.max_num_samples_per_waveform,
+        num_waveforms*2,
+	    waveform_duration.seconds,
+        temp_strain_values
+    );
+        
+    inverseRearrangeMemoryKernel(
+        (float*)temp_strain_values, 
+        (float*)waveform_axes_td.strain.values, 
+        num_waveforms, 
+        waveform_axes_td.strain.max_num_samples_per_waveform
+    );
+    cudaFree(temp_strain_values);
     
     return waveform_axes_td;
 }
@@ -645,9 +756,7 @@ waveform_axes_s convertWaveformFDToTD(
 // This function is tested in ../test/PNCoefficients.c for consistency
 // with the energy and flux in this file.
 
-
 // Taylor coefficients:
-
 inline float TaylorF2Phasing_2PNCoeff(
     const float eta
     ) {
@@ -923,12 +1032,92 @@ pn_phasing_series_s initTaylorF2AlignedPhasingSeries(
     return phasing_series;
 }
 
-void printSystemProperties(
-    const system_properties_s *system_properties
-    );
+void printCompanion(
+    companion_s companion
+    ) {
+    
+    printf("===== \n");
+    printf("Mass: %f Msun. \n", companion.mass.msun); 
+    printf("Spin: %fx %fy %fz. \n", companion.spin.x, companion.spin.y, companion.spin.z); 
+    printf("Quadrapole Moment: %f. \n", companion.quadrapole_moment); 
+    printf("Lambda: %f. \n", companion.lambda); 
+    printf("===== \n");
 
+}   
 
-//XLALSimInspiralTaylorF2AlignedPhasing
-  
+void printSystemProptiesHost(
+    system_properties_s system_properties
+    ) {
+    
+    printf("Companion 1: \n");
+    printCompanion(system_properties.companion[0]);
+    printf("Companion 2: \n");
+    printCompanion(system_properties.companion[1]);
+    
+    printf("Mass properties: \n");
+    
+    printf("===== \n");
+    printf("Total Mass: %f Msun. \n", system_properties.total_mass.msun);
+    printf("Reduced Mass: %f Msun. \n", system_properties.reduced_mass.msun);
+    printf("Symmetric Mass Ratio: %f. \n", system_properties.symmetric_mass_ratio);
+    printf("===== \n");
+
+    printf("Distance properties: \n");
+    
+    printf("===== \n");
+    printf("Distance: %f Mpc. \n", system_properties.distance.Mpc);
+    printf("Redshift: %f. \n", system_properties.redshift);
+    printf("===== \n");
+    
+    printf("Orbital properties: \n");
+    
+    printf("===== \n");
+    printf("Reference Orbital Phase: %f Radians. \n", system_properties.reference_orbital_phase.radians);
+    printf("Ascending Node Longitude: %f. \n", system_properties.ascending_node_longitude);
+    printf("Inclination: %f radians. \n", system_properties.inclination.radians);
+    printf("Eccentricity: %f. \n", system_properties.eccentricity);
+    printf("Mean Periastron Anomaly: %f. \n", system_properties.mean_periastron_anomaly);
+    printf("===== \n");
+}  
+
+void printTemporalProptiesHost(
+    temporal_properties_s temporal_properties
+    ) {
+    
+    printf("Temporal properties: \n");
+    
+    printf("===== \n");
+    printf("Time Interval: %f s. \n", temporal_properties.time_interval.seconds);
+    printf("Frequency Interval: %f Hz. \n", temporal_properties.frequency_interval.hertz);
+    printf("Starting Frequency: %f Hz. \n", temporal_properties.starting_frequency.hertz);
+    printf("Ending Frequency: %f Hz. \n", temporal_properties.ending_frequency.hertz);
+    printf("Reference Frequency: %f Hz. \n", temporal_properties.reference_frequency.hertz);
+    printf("Extra Time: %f s. \n", temporal_properties.extra_time.seconds);
+    printf("Chirp Time Upper Bound: %f s. \n", temporal_properties.chirp_time_upper_bound.seconds);
+    printf("Merge Time Upper Bound: %f s. \n", temporal_properties.merge_time_upper_bound.seconds);
+    printf("Ringdown Time Upper Bound: %f s. \n", temporal_properties.ringdown_time_upper_bound.seconds);
+    printf("Total Time Upper Bound: %f s. \n", temporal_properties.total_time_upper_bound.seconds);
+    printf("===== \n");
+}    
+
+void freeWaveformAxes(
+    waveform_axes_s waveform_axes
+    ){
+    
+    cudaFree(waveform_axes.merger_time_for_waveform);
+    
+    // Free time array:
+    cudaFree(waveform_axes.time.values);
+    cudaFree(waveform_axes.time.interval_of_waveform);
+    cudaFree(waveform_axes.time.num_samples_in_waveform);
+    
+    // Free strain array:
+    cudaFree(waveform_axes.strain.values);
+    cudaFree(waveform_axes.strain.num_samples_in_waveform);
+    
+    cudaFree(waveform_axes.temporal_properties_of);
+    cudaFree(waveform_axes.system_properties_of);
+    cudaFree(waveform_axes.aproximant_variables_of);    
+}
 
 #endif

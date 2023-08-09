@@ -1,4 +1,4 @@
-from cuphenom import generate_phenom
+from cuphenom import generate_phenom_d
 import numpy as np
 
 from bokeh.layouts import gridplot
@@ -8,31 +8,31 @@ from bokeh.models import ColumnDataSource
 from tqdm import tqdm
 
 import time
-import random
 
 def test_generate_phenom():
     # Define reasonable input parameters for an average gravitational wave
-    approximant_enum = 1
-    mass_1_msun = 30
-    mass_2_msun = 30
-    sample_rate_hertz = 4096
+    num_waveforms = 32
+    sample_rate_hertz = 4096.0
     duration_seconds = 4.0
-    inclination_radians = 1.0
-    distance_mpc = 100.0
-    reference_orbital_phase_in = 0.0
-    ascending_node_longitude = 100.0
-    eccentricity = 0.0
-    mean_periastron_anomaly = 0.0
-    spin_1_in = [0.0, 0.0, 0.0]
-    spin_2_in = [0.0, 0.0, 0.0]
+    
+    mass_1_msun = np.random.uniform(10, 100, size = num_waveforms)  # random float between 1 and 30
+    mass_2_msun = np.random.uniform(10, 100, size = num_waveforms)
+    inclination_radians = np.random.uniform(0, np.pi, size = num_waveforms)
+    distance_mpc = np.random.uniform(10.0, 1000.0, size = num_waveforms)
+    reference_orbital_phase_in = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    ascending_node_longitude = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    eccentricity = np.random.uniform(0, 0.1, size = num_waveforms)
+    mean_periastron_anomaly = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    spin_1_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
+    spin_2_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
 
     # Call generatePhenom function
-    result = generate_phenom(
-        approximant_enum,
-        mass_1_msun,
-        mass_2_msun,
+    result = generate_phenom_d(
+        num_waveforms,
         sample_rate_hertz,
         duration_seconds,
+        mass_1_msun,
+        mass_2_msun,
         inclination_radians,
         distance_mpc,
         reference_orbital_phase_in,
@@ -48,62 +48,75 @@ def test_generate_phenom():
     times = np.arange(0, duration_seconds, 1/sample_rate_hertz)
     polarisations_plus = result[:, 0]
     polarisations_cross = result[:, 1]
+    
+    figures = []  # list to store all figures
 
-    # Prepare data for bokeh
-    data = ColumnDataSource(data=dict(
-        time=times,
-        plus=polarisations_plus,
-        cross=polarisations_cross
-    ))
+    for i in range(num_waveforms):
+        # Prepare data for bokeh
+        data = ColumnDataSource(data=dict(
+            time=times,
+            plus=polarisations_plus[i * len(times):(i + 1) * len(times)],
+            cross=polarisations_cross[i * len(times):(i + 1) * len(times)]
+        ))
 
-    # Create a new plot
-    p = figure(title="Gravitational Wave Polarisations", x_axis_label='Time (s)', y_axis_label='Strain')
+        # Create a new plot
+        p = figure(title=f"Gravitational Wave Polarisation {i}", x_axis_label='Time (s)', y_axis_label='Strain')
 
-    # Add polarisation traces
-    p.line('time', 'plus', source=data, legend_label="Plus Polarisation", line_color="blue")
-    p.line('time', 'cross', source=data, legend_label="Cross Polarisation", line_color="red")
+        # Add polarisation traces
+        p.line('time', 'plus', source=data, legend_label="Plus Polarisation", line_color="blue")
+        p.line('time', 'cross', source=data, legend_label="Cross Polarisation", line_color="red")
 
-    # Move the legend to the upper left corner
-    p.legend.location = "top_left"
+        # Move the legend to the upper left corner
+        p.legend.location = "top_left"
 
-    # Output to static HTML file
+        # Append to the figures list
+        figures.append(p)
+
+    # Output to a static HTML file
     output_file("gravitational_wave_polarisations.html")
 
+    # Arrange plots in a grid, where each row has plots from the figures list
+    grid = gridplot([figures])
+
     # Show the results
-    show(p)
+    show(grid)
 
 def speed_test_generate_phenom(num_tests=100):
 
     # Prepare data storage for bokeh
     times = []
     runtimes = []
+    
+    # Define random input parameters
+    num_waveforms = 1000
+    sample_rate_hertz = 4096.0
+    duration_seconds = 4.0
+        
+    pbar = tqdm(total=num_tests)
+    
+    mass_1_msun = np.random.uniform(10, 50, size = num_waveforms)  # random float between 1 and 30
+    mass_2_msun = np.random.uniform(10, 50, size = num_waveforms)
+    inclination_radians = np.random.uniform(0, np.pi, size = num_waveforms)
+    distance_mpc = np.random.uniform(10.0, 1000.0, size = num_waveforms)
+    reference_orbital_phase_in = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    ascending_node_longitude = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    eccentricity = np.random.uniform(0, 0.1, size = num_waveforms)
+    mean_periastron_anomaly = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    spin_1_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
+    spin_2_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
 
-    for i in tqdm(range(num_tests)):
-        # Define random input parameters
-        approximant_enum = 0 # random choice between 1, 2, 3
-        mass_1_msun = random.uniform(10, 50)  # random float between 1 and 30
-        mass_2_msun = random.uniform(10, 50)
-        sample_rate_hertz = 4096  # Keep these parameters fixed for now
-        duration_seconds = 4.0
-        inclination_radians = random.uniform(0, np.pi)
-        distance_mpc = random.uniform(10.0, 1000.0)
-        reference_orbital_phase_in = random.uniform(0, np.pi*2)
-        ascending_node_longitude = random.uniform(0, np.pi*2)
-        eccentricity = random.uniform(0, 0.1)
-        mean_periastron_anomaly = random.uniform(0, np.pi*2)
-        spin_1_in = [random.uniform(-0.5, 0.5) for _ in range(3)]
-        spin_2_in = [random.uniform(-0.5, 0.5) for _ in range(3)]
-
+    for _ in range(num_tests // num_waveforms):
+        
         # Start the timer
         start_time = time.time()
-
+        
         # Call generatePhenom function
-        result = generate_phenom(
-            approximant_enum,
-            mass_1_msun,
-            mass_2_msun,
+        result = generate_phenom_d(
+            num_waveforms,
             sample_rate_hertz,
             duration_seconds,
+            mass_1_msun,
+            mass_2_msun,
             inclination_radians,
             distance_mpc,
             reference_orbital_phase_in,
@@ -118,6 +131,10 @@ def speed_test_generate_phenom(num_tests=100):
         runtime = time.time() - start_time
         times.append(start_time)
         runtimes.append(runtime)
+        
+        pbar.update(num_waveforms)
+    
+    pbar.close()
         
     print("Runtimes", np.sum(runtimes))
 
@@ -145,4 +162,5 @@ def speed_test_generate_phenom(num_tests=100):
 if __name__ == "__main__":
     
     # Call the test function
-    speed_test_generate_phenom(num_tests=1000000)
+    test_generate_phenom()
+    speed_test_generate_phenom(num_tests=100000)

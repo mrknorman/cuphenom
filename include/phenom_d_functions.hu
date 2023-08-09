@@ -1103,11 +1103,11 @@ __device__ __forceinline__ float calculateInspiralPhaseAnsatzDerivitive(
     ) {
     // First frequency derivative of PhiInsAnsatzInt
     
-    const float start_freqeuncy = coefficients.intermediate_start_frequency;
+    const float start_frequency = coefficients.intermediate_start_frequency;
     const float *sigma          = coefficients.inspiral; 
-
+    
     // Assemble PN phasing series:
-    const float init_v = cbrtf((float)M_PI*start_freqeuncy);
+    const float init_v = cbrtf((float)M_PI*start_frequency);
     
     const int32_t PN_PHASING_SERIES_LENGTH = 9;
     float v[PN_PHASING_SERIES_LENGTH];
@@ -1375,245 +1375,10 @@ __global__ void sumFrequenciesPhenomTidal(
     }    
 }
 
-extern "C" complex_waveform_axes_s generatePhenomD(
-    const temporal_properties_s *temporal_properties,
-    const int32_t                num_strain_axis_samples
-    ) {
-    
-    const frequencyUnit_t starting_frequency = 
-        temporal_properties[0].starting_frequency;
-    const frequencyUnit_t ending_frequency   = 
-        temporal_properties[0].ending_frequency;
-    const frequencyUnit_t frequency_interval = 
-        temporal_properties[0].frequency_interval;
-    
-    /*
-    _calcNumStrainAxisSamples(
-        temporal_properties,
-        system_properties,
-        num_strain_axis_samples,
-        num_waveforms
-    ); 
-    */
-
-    // Initilise frequency array using the upper and lower bounds:
-    const int32_t start_index = 
-        (int32_t) (starting_frequency.hertz 
-            / frequency_interval.hertz);
-    const int32_t end_index = 
-        (int32_t) (ending_frequency.hertz 
-            / frequency_interval.hertz);
-        
-    const int32_t num_frequency_axis_samples = end_index - start_index;
-    
-    // Error check indicies:
-    if (end_index >= num_strain_axis_samples)
-    {
-        fprintf(
-            stderr,
-            "%s:\n"
-            "Error! Calculated end_index (%i) is greater than "
-            "num_frequency_axis_samples (%i)! Exiting!"
-            , __func__, end_index, num_strain_axis_samples  
-        );
-        exit(1);
-    }
-    else if (start_index >= end_index)
-    {
-        fprintf(
-            stderr,
-            "%s:\n"
-            "Error! Calculated start_index (%i) is greater than end_index "
-            "(%i)! Exiting!"
-            , __func__, start_index, end_index  
-        );
-        exit(1);
-    }
-    
-    complex_strain_array_s complex_strain_array;
-    cudaCallocateDeviceMemory(
-        num_strain_axis_samples,
-        sizeof(complex_strain_element_c),
-        (void**)&(complex_strain_array.values)
-    );
-    complex_strain_array.num_samples = num_strain_axis_samples;
-    
-    frequency_array_s frequency_array;
-    cudaAllocateDeviceMemory(
-        num_frequency_axis_samples,
-        sizeof(frequencyUnit_t),
-        (void**)&(frequency_array.values)
-    );
-    frequency_array.num_samples = num_frequency_axis_samples;
-    
-    // Init Frequency Axis
-    const int32_t grid_size = 
-        ((num_frequency_axis_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
-        
-    initFrequencyArray<<<grid_size, BLOCK_SIZE>>>(
-        frequency_array, 
-        start_index, 
-        end_index, 
-        frequency_interval
-    );
-    
-    time_array_s time_array = 
-    {
-        .values      = NULL,
-        .interval    = initTimeSeconds(0.0f),
-        .num_samples = 0
-    };
-    complex_waveform_axes_s waveform_axes_fd = 
-    {
-        .merger_time = initTimeSeconds(0.0f),
-        .frequency   = frequency_array,
-        .time        = time_array,
-        .strain      = complex_strain_array
-    };
-    
-    return waveform_axes_fd;
-}
-
-__global__ void _sumPhenomDFrequenciesOLD(
-          complex_waveform_axes_s         waveform_axes_fd,
-    const float                           plus_factor,
-    const float                           cross_factor,
-    const float                           total_mass_seconds,
-    const amplitude_coefficients_s        amplitude_coefficients,
-    const amplitude_inspiral_prefactors_s amplitude_prefactors,
-    const phase_coefficients_s            phase_coefficients, 
-    const phase_inspiral_prefactors_s     phase_prefactors, 
-    const int32_t                         offset,
-    const float                           phase_shift,
-    const float                           amp0,
-    const float                           reference_mass_frequency,
-    const float                           phi_precalc
-    ) {
-    
-    //
-    //Description.
-    //@param 
-    //@see 
-    //@return void
-    //
-    
-    // Assign unique thread index for GPU calculation:
-    const int32_t sample_index = blockIdx.x * blockDim.x + threadIdx.x;
-    
-    // If not outside array bounds sum pheom frequencies:
-    if (sample_index < waveform_axes_fd.frequency.num_samples) 
-	{    
-        // Shift index for frequency series if needed:
-        const int32_t offset_index = sample_index + offset; 
-
-        // Calculate usefull powers of mass_frequency value:
-        const useful_powers_s mass_frequency = 
-            _initUsefulPowers(
-                total_mass_seconds*
-                    waveform_axes_fd.frequency.values[sample_index].hertz
-            );    
-
-        // Calculate amplitude value at current sample index:
-        const float amplitude = 
-            calculateAmplitude(
-                mass_frequency, 
-                amplitude_coefficients, 
-                amplitude_prefactors
-            );
-        
-        // Calculate phase value at current sample index:
-        const float phase = 
-            calculatePhase(
-                mass_frequency, 
-                phase_coefficients, 
-                phase_prefactors, 
-                1.0f, 
-                1.0f
-            ) 
-            - phase_shift*(mass_frequency.one - reference_mass_frequency) 
-            - phi_precalc;
-                        
-        // Convert values to cuFloatComplex:
-        const cuFloatComplex phase_c = 
-            (cuFloatComplex) 
-            {
-                0.0f,
-                -1*phase
-            };
-        
-        const cuFloatComplex amplitude_c = 
-            (cuFloatComplex) 
-            {
-                amp0*amplitude,
-                0.0f
-            };
-        
-        // Calculate strain at current sample_index:
-        waveform_axes_fd.strain.values[offset_index].plus = 
-            cuCmulf(amplitude_c,cudaCExpf(phase_c));
-    
-        // Calcualte plus and cross polarizations:
-        waveform_axes_fd.strain.values[offset_index].cross = 
-            cuCmulf(
-                waveform_axes_fd.strain.values[offset_index].plus, 
-                (cuFloatComplex) {0.0f, -1*cross_factor}
-            );
-            
-        waveform_axes_fd.strain.values[offset_index].plus =
-            cuCmulf(
-                waveform_axes_fd.strain.values[offset_index].plus,
-                (cuFloatComplex) {plus_factor, 0.0}
-            );
-    }    
-}
-
-extern "C" int32_t sumPhenomDFrequenciesOLD(
-          complex_waveform_axes_s         waveform_axes_fd,
-    const float                           inclination,
-    const float                           total_mass_seconds,
-    const amplitude_coefficients_s        amplitude_coefficients,
-    const amplitude_inspiral_prefactors_s amplitude_prefactors,
-    const phase_coefficients_s            phase_coefficients, 
-    const phase_inspiral_prefactors_s     phase_prefactors, 
-    const int32_t                         offset,
-    const float                           phase_shift,
-    const float                           amp0,
-    const float                           reference_mass_frequency,
-    const float                           phi_precalc
-    ) {
-    
-    const int32_t grid_size = 
-        (
-            (waveform_axes_fd.frequency.num_samples + BLOCK_SIZE - 1) 
-            / BLOCK_SIZE
-        );
-        
-    const float cross_factor = cosf(inclination);
-    const float plus_factor  = 0.5f * (1.0f + cross_factor*cross_factor);
-    
-    _sumPhenomDFrequenciesOLD<<<grid_size, BLOCK_SIZE>>>(
-        waveform_axes_fd,
-        plus_factor,
-        cross_factor,
-        total_mass_seconds,
-        amplitude_coefficients,
-        amplitude_prefactors,
-        phase_coefficients, 
-        phase_prefactors, 
-        offset,
-        phase_shift,
-        amp0,
-        reference_mass_frequency,
-        phi_precalc
-    );
-    
-    return 0;
-}
-
 __global__ void calculateInclinationFactors(
-    const m_complex_waveform_axes_s   waveform_axes_fd,
-          float                      *cross_factor, 
-          float                      *plus_factor
+    const complex_waveform_axes_s   waveform_axes_fd,
+          float                    *cross_factor, 
+          float                    *plus_factor
     ) {
     
     // Assign unique thread index for GPU calculation:
@@ -1636,9 +1401,9 @@ __global__ void calculateInclinationFactors(
 }
 
 __global__ void _sumPhenomDFrequencies(
-          m_complex_waveform_axes_s  waveform_axes_fd,
-    const float                     *plus_factors,
-    const float                     *cross_factors\
+          complex_waveform_axes_s  waveform_axes_fd,
+    const float                   *plus_factors,
+    const float                   *cross_factors\
     ) {
     
     //
@@ -1677,7 +1442,6 @@ __global__ void _sumPhenomDFrequencies(
                 waveform_axes_fd.
                     aproximant_variables_of[waveform_index].d;
 
-
             const int32_t offset = variables.offset;
 
             const amplitude_coefficients_s amplitude_coefficients =
@@ -1713,7 +1477,7 @@ __global__ void _sumPhenomDFrequencies(
                 _initUsefulPowers(
                     total_mass.seconds*
                         waveform_axes_fd.frequency.values[thread_index].hertz
-                );    
+                );
 
             // Calculate amplitude value at current sample index:
             const float amplitude = 
@@ -1749,7 +1513,7 @@ __global__ void _sumPhenomDFrequencies(
                     amplitude_prefactor_0*amplitude,
                     0.0f
                 };
-
+            
             // Calculate strain at current sample_index
             
             waveform_axes_fd.strain.values[offset_index].plus = 
@@ -1772,7 +1536,7 @@ __global__ void _sumPhenomDFrequencies(
 }
 
 extern "C" int32_t sumPhenomDFrequencies(
-    m_complex_waveform_axes_s waveform_axes_fd
+    complex_waveform_axes_s waveform_axes_fd
     ) {
     
     float *cross_factors = NULL;
@@ -1827,7 +1591,7 @@ __global__ void _initPhenomDVariables(
     const float                  *damping_splines,
     const int32_t                 num_waveforms
     ) {
-    
+            
     // I do not know what these do and at this point I'm too scared to ask:
     const float         non_gdr_chi_6  = 0.0f;
     const tidal_order_e tidal_pn_order = TIDAL_ORDER_ALL; 
@@ -1872,7 +1636,7 @@ __global__ void _initPhenomDVariables(
             offset = 
                 (int32_t)(starting_frequency.hertz / frequency_interval.hertz);
         }
-        
+                
         // Init amplitude coefficients:
         amplitude_coefficients_s amplitude_coefficients = 
             initAmplitudeCoefficients(
@@ -1887,7 +1651,7 @@ __global__ void _initPhenomDVariables(
                 ringdown_splines[waveform_index],
                 damping_splines[waveform_index]
             );
-            
+        
         pn_phasing_series_s phasing_series =
             initTaylorF2AlignedPhasingSeries(system_properties, tidal_pn_order);
 
@@ -1969,6 +1733,110 @@ __global__ void _initPhenomDVariables(
     }
 }
 
+#include <stdio.h>
+
+__global__ void _printPhenomDVariables(
+    const phenom_d_variables_s *phenom
+    ) {
+    
+    printf("Phenom D Variables:\n");
+    printf("  Offset: %d\n", phenom->offset);
+
+    printf("  Amplitude Coefficients:\n");
+    printf("    Eta: %f\n    EtaInv: %f\n    Chi12: %f\n    Chi22: %f\n    Eta2: %f\n    Eta3: %f\n    Seta: %f\n    SetaPlus1: %f\n    Chi1: %f\n    Chi2: %f\n    Q: %f\n    Chi: %f\n    Ringdown Frequency: %f\n    Damping Time: %f\n    Inspiraling Merger Peak Frequency: %f\n",
+           phenom->amplitude_coefficients.eta, phenom->amplitude_coefficients.etaInv,
+           phenom->amplitude_coefficients.chi12, phenom->amplitude_coefficients.chi22,
+           phenom->amplitude_coefficients.eta2, phenom->amplitude_coefficients.eta3,
+           phenom->amplitude_coefficients.Seta, phenom->amplitude_coefficients.SetaPlus1,
+           phenom->amplitude_coefficients.chi1, phenom->amplitude_coefficients.chi2,
+           phenom->amplitude_coefficients.q, phenom->amplitude_coefficients.chi,
+           phenom->amplitude_coefficients.ringdown_frequency, phenom->amplitude_coefficients.damping_time,
+           phenom->amplitude_coefficients.inspiral_merger_peak_frequency);
+    
+    for (int i = 0; i < NUM_AMPLITUDE_INSPIRAL_COEFFICIENTS; i++) {
+        printf("    Inspiraling Coefficient %d: %f\n", i, phenom->amplitude_coefficients.inspiral[i]);
+    }
+    
+    for (int i = 0; i < NUM_AMPLITUDE_INTERMEDIATE_TERMS; i++) {
+        printf("    Intermediate Coefficient %d: %f\n", i, phenom->amplitude_coefficients.intermediate[i]);
+    }
+
+    for (int i = 0; i < NUM_AMPLITUDE_MERGER_RINGDOWN_COEFFICIENTS; i++) {
+        printf("    Merger-Ringdown Coefficient %d: %f\n", i, phenom->amplitude_coefficients.merger_ringdown[i]);
+    }
+
+    printf("  Amplitude Prefactor 0: %f\n", phenom->amplitude_prefactor_0);
+
+    printf("  Amplitude Inspiraling Prefactors:\n");
+    printf("    Two Thirds: %f\n    One: %f\n    Four Thirds: %f\n    Five Thirds: %f\n    Two: %f\n    Seven Thirds: %f\n    Eight Thirds: %f\n    Three: %f\n    Amp0: %f\n",
+           phenom->amplitude_prefactors.two_thirds, phenom->amplitude_prefactors.one,
+           phenom->amplitude_prefactors.four_thirds, phenom->amplitude_prefactors.five_thirds,
+           phenom->amplitude_prefactors.two, phenom->amplitude_prefactors.seven_thirds,
+           phenom->amplitude_prefactors.eight_thirds, phenom->amplitude_prefactors.three,
+           phenom->amplitude_prefactors.amp0);
+
+    printf("  Phase Coefficients:\n");
+    printf("    Eta: %e\n    EtaInv: %e\n    Eta2: %e\n    Seta: %e\n    Chi1: %e\n    Chi2: %e\n    Q: %e\n    Chi: %e\n    Ringdown Frequency: %e\n    Damping Time: %e\n",
+           phenom->phase_coefficients.eta, phenom->phase_coefficients.etaInv,
+           phenom->phase_coefficients.eta2, phenom->phase_coefficients.Seta,
+           phenom->phase_coefficients.chi1, phenom->phase_coefficients.chi2,
+           phenom->phase_coefficients.q, phenom->phase_coefficients.chi,
+           phenom->phase_coefficients.ringdown_frequency, phenom->phase_coefficients.damping_time);
+
+    for (int i = 0; i < NUM_PHASE_INSPIRAL_COEFFICIENTS; i++) {
+        printf("    Inspiraling Phase Coefficient %d: %e\n", i, phenom->phase_coefficients.inspiral[i]);
+    }
+
+    for (int i = 0; i < NUM_PHASE_INTERMEDIATE_COEFFICIENTS; i++) {
+        printf("    Intermediate Phase Coefficient %d: %e\n", i, phenom->phase_coefficients.intermediate[i]);
+    }
+
+    for (int i = 0; i < NUM_PHASE_MERGER_RINGDOWN_COEFFICIENTS; i++) {
+        printf("    Merger-Ringdown Phase Coefficient %d: %e\n", i, phenom->phase_coefficients.merger_ringdown[i]);
+    }
+
+    printf("    C1Int: %e\n    C2Int: %e\n    C1MRD: %e\n    C2MRD: %e\n    Intermediate Start Frequency: %e\n    Merger Ringdown Start Frequency: %e\n",
+           phenom->phase_coefficients.C1Int, phenom->phase_coefficients.C2Int,
+           phenom->phase_coefficients.C1MRD, phenom->phase_coefficients.C2MRD,
+           phenom->phase_coefficients.intermediate_start_frequency, phenom->phase_coefficients.merger_ringdown_start_frequency);
+
+    printf("  Phase Inspiraling Prefactors:\n");
+    printf("    Initial Phasing: %e\n    Third: %e\n    Third with LogV: %e\n    Two Thirds: %e\n    One: %e\n    Four Thirds: %e\n    Five Thirds: %e\n    Two: %e\n    LogV: %e\n    Minus Third: %e\n    Minus Two Thirds: %e\n    Minus One: %e\n    Minus Four Thirds: %e\n    Minus Five Thirds: %e\n",
+           phenom->phase_prefactors.initial_phasing, phenom->phase_prefactors.third,
+           phenom->phase_prefactors.third_with_logv, phenom->phase_prefactors.two_thirds,
+           phenom->phase_prefactors.one, phenom->phase_prefactors.four_thirds,
+           phenom->phase_prefactors.five_thirds, phenom->phase_prefactors.two,
+           phenom->phase_prefactors.logv, phenom->phase_prefactors.minus_third,
+           phenom->phase_prefactors.minus_two_thirds, phenom->phase_prefactors.minus_one,
+           phenom->phase_prefactors.minus_four_thirds, phenom->phase_prefactors.minus_five_thirds);
+
+    printf("  PN Phasing Series:\n");
+    for (int i = 0; i <= PN_PHASING_SERIES_MAX_ORDER; i++) {
+        printf("    v[%d]: %e\n    vlogv[%d]: %e\n \n", i, phenom->phasing_series.v[i], i, phenom->phasing_series.vlogv[i]);
+    }
+
+    printf("  Useful Powers:\n");
+    printf("    One: %e\n    Third: %e\n    Two Thirds: %e\n    Four Thirds: %e\n    Five Thirds: %e\n    Two: %e\n    Seven Thirds: %e\n    Eight Thirds: %e\n ",
+           phenom->powers_of_reference_mass.one, phenom->powers_of_reference_mass.third,
+           phenom->powers_of_reference_mass.two_thirds, phenom->powers_of_reference_mass.four_thirds,
+           phenom->powers_of_reference_mass.five_thirds, phenom->powers_of_reference_mass.two,
+           phenom->powers_of_reference_mass.seven_thirds, phenom->powers_of_reference_mass.eight_thirds);
+
+    printf("  Precalculated Phase: %e\n", phenom->precalculated_phase);
+    printf("  Phase Shift: %e\n", phenom->phase_shift);
+}
+
+void printPhenomDVariables(
+    phenom_d_variables_s *variables
+    ) {
+    
+    _printPhenomDVariables<<<1, 1>>>(
+        variables
+    );
+    
+    cudaDeviceSynchronize();
+}
+
 extern "C" aproximant_variables_s *initPhenomDVariables(
     const system_properties_s    *system_properties_of,
     const temporal_properties_s  *temporal_properties_of,
@@ -1999,13 +1867,13 @@ extern "C" aproximant_variables_s *initPhenomDVariables(
     return aproximant_variables_of;
 }
 
-extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
+extern "C" complex_waveform_axes_s initPhenomDWaveformAxes(
           temporal_properties_s *temporal_properties_of,
     const system_properties_s   *system_properties_of,
     const int32_t                num_waveforms
     ) {
     
-    float* final_spins = (float*)malloc(sizeof(float)*(size_t)num_waveforms);
+    float final_spins[num_waveforms];
     for (int32_t index = 0; index < num_waveforms; index++)
     {
         final_spins[index] = calcFinalSpin(system_properties_of[index]); 
@@ -2035,8 +1903,6 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         num_waveforms
     );
     
-    free(final_spins);
-    
     temporal_properties_s *temporal_properties_of_g = NULL;
     cudaToDevice(
         (void*) temporal_properties_of, 
@@ -2060,7 +1926,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         (void**)&num_strain_axis_samples_in_waveform
     );
     
-    const int32_t grid_size = 
+    int32_t grid_size = 
         ((num_waveforms + BLOCK_SIZE - 1) / BLOCK_SIZE);
     
     _calcNumStrainAxisSamples<<<grid_size, BLOCK_SIZE>>>(
@@ -2086,7 +1952,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         (void**)&strain_axis_values
     );
     
-    m_complex_strain_array_s strain_axis = 
+    complex_strain_array_s strain_axis = 
     {
         .values                       = strain_axis_values,
         .num_samples_in_waveform      = num_strain_axis_samples_in_waveform,
@@ -2108,39 +1974,31 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         num_frequency_axis_samples_in_waveform,
         num_waveforms
     );
-    const int32_t max_num_frequency_axis_samples_per_waveform = 
-        (int32_t) cudaFindMaxHost(
-            num_frequency_axis_samples_in_waveform, 
-            num_waveforms
-        );
-        
-    const int32_t total_num_frequency_axis_samples = 
-        max_num_frequency_axis_samples_per_waveform * num_waveforms;
     
     frequencyUnit_t *frequency_axis_values = NULL;
     cudaCallocateDeviceMemory(
         sizeof(frequencyUnit_t), 
-        total_num_frequency_axis_samples,
+        total_num_strain_axis_samples,
         (void**)&frequency_axis_values
     );
-    
+      
     frequencyUnit_t *frequency_interval_of_waveform = NULL;
     cudaCallocateDeviceMemory(
-        sizeof(timeUnit_t), 
+        sizeof(frequencyUnit_t), 
         num_waveforms,
         (void**)&frequency_interval_of_waveform
     );
-        
-    m_frequency_array_s frequency_axis = 
+            
+    frequency_array_s frequency_axis = 
     {
         .values                       = frequency_axis_values,
         .interval_of_waveform         = frequency_interval_of_waveform,
         .num_samples_in_waveform      = num_frequency_axis_samples_in_waveform,
         .max_num_samples_per_waveform = 
-            max_num_frequency_axis_samples_per_waveform,
-        .total_num_samples            = total_num_frequency_axis_samples
+            max_num_strain_axis_samples_per_waveform,
+        .total_num_samples            = total_num_strain_axis_samples
     };
-
+    
     timeUnit_t *time_interval_of_waveform = NULL;
     cudaCallocateDeviceMemory(
         sizeof(timeUnit_t), 
@@ -2148,7 +2006,7 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         (void**)&time_interval_of_waveform
     );
     
-    m_time_array_s empty_time_axis = 
+    time_array_s empty_time_axis = 
     {
         .values                       = NULL,
         .interval_of_waveform         = time_interval_of_waveform,
@@ -2172,11 +2030,23 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
             damping_splines,
             num_waveforms
         );
-        
+    
+    // Break in case of emergency
+    
+    /*
+    for (int32_t index = 0; index < num_waveforms; index++)
+    {
+        printf(" ===== Waveform %i ===== \n", index);
+        printPhenomDVariables(
+            &aproximant_variables_of[index].d
+        );
+    }
+    */
+     
     cudaFree((void*)ringdown_splines); cudaFree((void*)damping_splines); 
         
     // Construct Waveform Axes:
-    m_complex_waveform_axes_s complex_waveform_axes = 
+    complex_waveform_axes_s waveform_axes_fd = 
     {
         .merger_time_for_waveform = merger_time_for_waveform,
         .frequency                = frequency_axis,
@@ -2188,7 +2058,15 @@ extern "C" m_complex_waveform_axes_s initPhenomDWaveformAxes(
         .num_waveforms            = num_waveforms
     };
     
-    return complex_waveform_axes;
+    // Init Frequency Axis (use max strain samples for batching)
+    grid_size = 
+        ((total_num_strain_axis_samples + BLOCK_SIZE - 1) / BLOCK_SIZE);
+            
+    initFrequencyArray<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes_fd
+    );
+    
+    return waveform_axes_fd;
 }
 
 #endif

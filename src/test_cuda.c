@@ -44,7 +44,7 @@ int32_t main(){
     const float inclination_radians =    1.0f;
     const float distance_mpc        = 1000.0f;
 	
-	float2_t *strain = NULL;
+	strain_element_t *strain = NULL;
     
 	const massUnit_t      mass_1      = initMassSolarMass(mass_1_msun);
 	const massUnit_t      mass_2      = initMassSolarMass(mass_2_msun);
@@ -52,9 +52,6 @@ int32_t main(){
     const angularUnit_t   inclination = initAngleRadians(inclination_radians);
 	const lengthUnit_t    distance    = initLengthMpc(distance_mpc);
 	const timeUnit_t      duration    = initTimeSeconds(duration_seconds);
-	
-	const int32_t num_samples = 
-		(int32_t)floor(sample_rate.hertz*duration.seconds);
 		    
 	// LAL:
     generatePhenomCUDA(

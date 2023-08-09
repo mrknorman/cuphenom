@@ -152,25 +152,11 @@ typedef struct
 typedef struct
 {
     frequencyUnit_t *values;
-    frequencyUnit_t  interval;
-    int32_t          num_samples;
-} frequency_array_s;
-
-typedef struct
-{
-    frequencyUnit_t *values;
     frequencyUnit_t *interval_of_waveform;
     float           *num_samples_in_waveform;
     int32_t          max_num_samples_per_waveform;
     int32_t          total_num_samples;
-} m_frequency_array_s;
-
-typedef struct
-{
-    timeUnit_t *values;
-    timeUnit_t  interval;
-    int32_t     num_samples;
-} time_array_s;
+} frequency_array_s;
 
 typedef struct
 {
@@ -179,13 +165,7 @@ typedef struct
     float      *num_samples_in_waveform;
     int32_t     max_num_samples_per_waveform;
     int32_t     total_num_samples;
-} m_time_array_s;
-
-typedef struct
-{
-    complex_strain_element_c *values;
-    int32_t                   num_samples;
-} complex_strain_array_s;
+} time_array_s;
 
 typedef struct
 {
@@ -193,21 +173,15 @@ typedef struct
     float                    *num_samples_in_waveform;
     int32_t                   max_num_samples_per_waveform;
     int32_t                   total_num_samples;
-} m_complex_strain_array_s;
+} complex_strain_array_s;
 
 typedef struct
 {
     strain_element_t *values;
-    int32_t           num_samples;
+    float            *num_samples_in_waveform;
+    int32_t           max_num_samples_per_waveform;
+    int32_t           total_num_samples;
 } strain_array_s;
-
-typedef struct
-{
-    timeUnit_t             merger_time;
-    frequency_array_s      frequency;
-    time_array_s           time;
-    complex_strain_array_s strain;
-} complex_waveform_axes_s;
 
 // Useful powers in GW waveforms: 1/6, 1/3, 2/3, 4/3, 5/3, 2, 7/3, 8/3, -1, 
 // -1/6, -7/6, -1/3, -2/3, -5/3 calculated using only one invocation of 'pow', 
@@ -330,7 +304,6 @@ typedef struct {
 typedef struct {
     float v      [PN_PHASING_SERIES_MAX_ORDER+1];
     float vlogv  [PN_PHASING_SERIES_MAX_ORDER+1];
-    float vlogvsq[PN_PHASING_SERIES_MAX_ORDER+1];
 } pn_phasing_series_s;
 
 typedef struct{
@@ -357,21 +330,25 @@ typedef union{
 
 typedef struct
 {
-    timeUnit_t               *merger_time_for_waveform;
-    m_frequency_array_s       frequency;
-    m_time_array_s            time;
-    m_complex_strain_array_s  strain;
-    temporal_properties_s    *temporal_properties_of;
-    system_properties_s      *system_properties_of;
-    aproximant_variables_s   *aproximant_variables_of;
-    int32_t                   num_waveforms;
-} m_complex_waveform_axes_s;
+    timeUnit_t             *merger_time_for_waveform;
+    frequency_array_s       frequency;
+    time_array_s            time;
+    complex_strain_array_s  strain;
+    temporal_properties_s  *temporal_properties_of;
+    system_properties_s    *system_properties_of;
+    aproximant_variables_s *aproximant_variables_of;
+    int32_t                 num_waveforms;
+} complex_waveform_axes_s;
 
 typedef struct
 {
-    timeUnit_t     merger_time;
-    time_array_s   time;
-    strain_array_s strain;
+    timeUnit_t             *merger_time_for_waveform;
+    time_array_s            time;
+    strain_array_s          strain;
+    temporal_properties_s  *temporal_properties_of;
+    system_properties_s    *system_properties_of;
+    aproximant_variables_s *aproximant_variables_of;
+    int32_t                 num_waveforms;
 } waveform_axes_s;
 
 #endif

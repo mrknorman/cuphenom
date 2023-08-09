@@ -470,6 +470,8 @@ int32_t main(){
 		distance, 
 		&lal_strain
 	);
+    
+    printf("Here! \n");
             
     generatePhenomCUDA(
 		D,

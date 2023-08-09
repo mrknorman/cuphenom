@@ -29,7 +29,7 @@ void generatePhenomLAL(
 	double S2z          = 0.0;
 	
 	double phiRef       = 0.0;
-	double longAscNodes = 100.0;
+	double longAscNodes = 1.0;
 	double eccentricity = 0.0;
 	double meanPerAno   = 0.0;
 	double deltaT       = 1.0/sample_rate.hertz;
