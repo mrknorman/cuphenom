@@ -804,7 +804,7 @@ void generatePhenomCUDA(
     frequencyUnit_t reference_frequency = initFrequencyHertz(0.0f);
     
     // Init property structures:
-    const int32_t num_waveforms = 11000;
+    const int32_t num_waveforms = 1;
     
     system_properties_s   system_properties[num_waveforms];
     temporal_properties_s temporal_properties[num_waveforms];

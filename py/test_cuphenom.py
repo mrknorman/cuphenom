@@ -1,4 +1,4 @@
-from cuphenom import generate_phenom
+from cuphenom import generate_phenom_d
 import numpy as np
 
 from bokeh.layouts import gridplot
@@ -12,27 +12,27 @@ import random
 
 def test_generate_phenom():
     # Define reasonable input parameters for an average gravitational wave
-    approximant_enum = 1
-    mass_1_msun = 30
-    mass_2_msun = 30
-    sample_rate_hertz = 4096
+    num_waveforms = 2
+    mass_1_msun = [30.0, 21.0]
+    mass_2_msun = [30.0, 21.0]
+    sample_rate_hertz = 4096.0
     duration_seconds = 4.0
-    inclination_radians = 1.0
-    distance_mpc = 100.0
-    reference_orbital_phase_in = 0.0
-    ascending_node_longitude = 100.0
-    eccentricity = 0.0
-    mean_periastron_anomaly = 0.0
-    spin_1_in = [0.0, 0.0, 0.0]
-    spin_2_in = [0.0, 0.0, 0.0]
+    inclination_radians = [1.0, 1.0]
+    distance_mpc = [100.0, 100.0]
+    reference_orbital_phase_in = [0.0, 0.0]
+    ascending_node_longitude = [100.0, 100.0]
+    eccentricity = [0.0, 0.0]
+    mean_periastron_anomaly = [0.0, 0.0]
+    spin_1_in = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    spin_2_in = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
     # Call generatePhenom function
-    result = generate_phenom(
-        approximant_enum,
-        mass_1_msun,
-        mass_2_msun,
+    result = generate_phenom_d(
+        num_waveforms,
         sample_rate_hertz,
         duration_seconds,
+        mass_1_msun,
+        mass_2_msun,
         inclination_radians,
         distance_mpc,
         reference_orbital_phase_in,
@@ -49,8 +49,6 @@ def test_generate_phenom():
     polarisations_plus = result[:, 0]
     polarisations_cross = result[:, 1]
     
-    print(polarisations_plus);
-
     # Prepare data for bokeh
     data = ColumnDataSource(data=dict(
         time=times,

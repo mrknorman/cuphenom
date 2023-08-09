@@ -5,10 +5,10 @@
 
 float *pythonWrapperPhenomD(
     const int32_t num_waveforms,
-    const float  *mass_1_msun,
-    const float  *mass_2_msun,
     const float   sample_rate_hertz,
     const float   duration_seconds,
+    const float  *mass_1_msun,
+    const float  *mass_2_msun,
     const float  *inclination_radians,
     const float  *distance_mpc,
     const float  *reference_orbital_phase_in,
@@ -119,49 +119,32 @@ float *pythonWrapperPhenomD(
             approximant
         );
         
+    const int32_t num_samples = waveform_axes.strain.total_num_samples;   
+            
     strain_element_t *strain = NULL;
     cudaToHost(
-        (void*)&waveform_axes.strain.values, 
+        (void*)waveform_axes.strain.values, 
         sizeof(strain_element_t),
-        waveform_axes.strain.total_num_samples,
+        num_samples,
         (void**)&strain
     );
     
-    /* MUST BE UPDATED FOR BATCH CASE
-    float2_t *strain = NULL;
-    cudaToHost(
-        (void**)&waveform_axes_td.strain.values[waveform_axes_td.strain.num_samples - num_samples - 1], 
-        sizeof(float2_t),
-        num_samples,
-        (void**) &strain
-    );
-    cudaFree(waveform_axes_td.strain.values);
-    cudaFree(waveform_axes_td.time.values);
-        
-    if (waveform_axes_td.strain.num_samples < num_samples) 
-    {    
-        fprintf(
-            stderr, 
-            "Warning! Cuphenom not generating waveforms of desired num_samples."
-            "\n"
-        );
-    }
+    freeWaveformAxes(waveform_axes);
             
-    float *test_array = malloc(sizeof(float) * (size_t)num_samples * 2);
+    float *return_array = (float*)
+        malloc(
+              sizeof(float) 
+            * (size_t)num_samples
+            * (size_t)NUM_POLARIZATION_STATES
+        );
+    
     for (int32_t index = 0; index < num_samples; index++)
     {
-        test_array[2*index + 0] = strain[index].x;
-        test_array[2*index + 1] = strain[index].y;
+        return_array[NUM_POLARIZATION_STATES*index + 0] = strain[index].plus;
+        return_array[NUM_POLARIZATION_STATES*index + 1] = strain[index].cross;
     }
     
-    free(strain);
-        
-    return test_array;
-    */
-    
-    float *blank_arrray = calloc(1, sizeof(float));
-    
-    return blank_arrray;
+    return return_array;
 }
 
 #endif
