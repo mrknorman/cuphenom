@@ -1486,4 +1486,66 @@ extern "C" int32_t inverseRearrangeMemoryKernel(
     return 0;
 }
 
+__global__ void _getLastSamples(
+          waveform_axes_s   waveform_axes, 
+          strain_element_t *output,
+    const int32_t           num_samples_needed
+    ) {
+        
+    // Assign unique thread index for GPU calculation:
+    const int32_t thread_index = 
+        blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t max_num_samples_per_waveform = 
+        waveform_axes.strain.max_num_samples_per_waveform;
+    const int32_t waveform_index = (int32_t)
+        floorf((float)thread_index / (float)max_num_samples_per_waveform);
+    const int32_t sample_index = 
+        (int32_t) thread_index % max_num_samples_per_waveform;        
+    const int32_t num_unneeded_samples = max_num_samples_per_waveform - num_samples_needed;
+    const int32_t new_sample_index = sample_index - num_unneeded_samples;
+    
+    const int32_t total_num_samples =
+        waveform_axes.strain.total_num_samples;
+        
+    if(thread_index < total_num_samples) 
+    {
+        if (sample_index > num_unneeded_samples)
+        {
+            const int32_t new_index = waveform_index*num_samples_needed + new_sample_index;
+            
+            output[new_index] = waveform_axes.strain.values[thread_index];
+        }
+    }
+}
+
+extern "C" waveform_axes_s cropAxes(
+          waveform_axes_s  waveform_axes, 
+    const int32_t          num_samples_needed
+    ) {
+    
+    const int32_t total_num_samples =
+        waveform_axes.strain.total_num_samples;
+    const int32_t num_waveforms =
+         waveform_axes.num_waveforms;
+    
+    strain_element_t* reduced_array = 
+        (strain_element_t*)malloc(sizeof(strain_element_t)*num_samples_needed*num_waveforms);
+    
+    const int32_t grid_size = 
+        (total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    
+    _getLastSamples<<<grid_size, BLOCK_SIZE>>>(
+        waveform_axes, 
+        reduced_array,
+        num_samples_needed
+    );
+        
+    cudaFree(waveform_axes.strain.values);
+    
+    waveform_axes.strain.values            = reduced_array;
+    waveform_axes.strain.total_num_samples = num_waveforms*num_samples_needed;
+    
+    return waveform_axes;
+}
+
 #endif

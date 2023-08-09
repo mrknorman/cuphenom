@@ -67,6 +67,11 @@ int32_t inverseRearrangeMemoryKernel(
     const int32_t  num_elements_in_subarray
     );
 
+waveform_axes_s cropAxes(
+          waveform_axes_s waveform_axes, 
+    const int32_t         num_samples_needed
+    );
+
 static void checkSystemParameters(
     const system_properties_s system_properties
     ) {

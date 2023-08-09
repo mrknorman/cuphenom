@@ -478,14 +478,13 @@ complex_waveform_axes_s cuInspiralFD(
         num_waveforms,
         (void**)&time_shifts_g
     );
-    
+
     performTimeShifts(
         waveform_axes_fd,
         time_shifts_g
     );
     
     cudaFree(time_shifts_g);
-        
     free(temporal_properties);
     
     return waveform_axes_fd;
@@ -774,7 +773,7 @@ void generatePhenomCUDA(
     frequencyUnit_t reference_frequency = initFrequencyHertz(0.0f);
     
     // Init property structures:
-    const int32_t num_waveforms = 11000;
+    const int32_t num_waveforms = 3;
     
     system_properties_s   system_properties[num_waveforms];
     temporal_properties_s temporal_properties[num_waveforms];
@@ -804,7 +803,7 @@ void generatePhenomCUDA(
             );
     }
     
-    waveform_axes_s waveform_axes_td = 
+    waveform_axes_s waveform_axes = 
         generateInspiral(
             system_properties,
             temporal_properties,
@@ -812,30 +811,26 @@ void generatePhenomCUDA(
             approximant
         );
         
-    float *num_samples_in_waveform_array = NULL;
-    cudaToHost(
-        (void*)waveform_axes_td.strain.num_samples_in_waveform, 
-        sizeof(float),
-        num_waveforms,
-        (void**)&num_samples_in_waveform_array
+    //Rearange memory here:
+    
+    waveform_axes = cropAxes(
+        waveform_axes, 
+        num_samples
     );
     
-    // Assume all waveforms have same time interval
-    const int32_t num_samples_in_waveform = (int32_t) num_samples_in_waveform_array[0];
-    free(num_samples_in_waveform_array);
-        
-    //Rearange memory here:
-    float2_t *strain = NULL;
+    
+    strain_element_t *strain = NULL;
     cudaToHost(
-        (void*)&waveform_axes_td.strain.values[
-        num_samples_in_waveform - num_samples - 1], 
-        sizeof(float2_t),
-        num_samples,
+        (void*)&waveform_axes.strain.values, 
+        sizeof(strain_element_t),
+        waveform_axes.strain.total_num_samples,
         (void**) &strain
     );
-    cudaFree(waveform_axes_td.strain.values);
+    
+    //Free axis
+    cudaFree(waveform_axes.strain.values);
         
-    if (waveform_axes_td.strain.max_num_samples_per_waveform < num_samples) 
+    if (waveform_axes.strain.max_num_samples_per_waveform < num_samples) 
     {    
         fprintf(
             stderr, 
