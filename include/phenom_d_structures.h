@@ -6,6 +6,7 @@
 #include <curand.h>
 #include <cufft.h>
 #include <cuda_fp16.h>
+#include <complex.h>
 
 #include "phenom_d_data.h"
 
@@ -155,7 +156,7 @@ typedef struct
     float           *num_samples_in_waveform;
     int32_t          max_num_samples_per_waveform;
     int32_t          total_num_samples;
-} m_frequency_array_s;
+} frequency_array_s;
 
 typedef struct
 {
@@ -164,7 +165,7 @@ typedef struct
     float      *num_samples_in_waveform;
     int32_t     max_num_samples_per_waveform;
     int32_t     total_num_samples;
-} m_time_array_s;
+} time_array_s;
 
 typedef struct
 {
@@ -172,7 +173,7 @@ typedef struct
     float                    *num_samples_in_waveform;
     int32_t                   max_num_samples_per_waveform;
     int32_t                   total_num_samples;
-} m_complex_strain_array_s;
+} complex_strain_array_s;
 
 typedef struct
 {
@@ -180,7 +181,7 @@ typedef struct
     float            *num_samples_in_waveform;
     int32_t           max_num_samples_per_waveform;
     int32_t           total_num_samples;
-} m_strain_array_s;
+} strain_array_s;
 
 // Useful powers in GW waveforms: 1/6, 1/3, 2/3, 4/3, 5/3, 2, 7/3, 8/3, -1, 
 // -1/6, -7/6, -1/3, -2/3, -5/3 calculated using only one invocation of 'pow', 
@@ -303,7 +304,6 @@ typedef struct {
 typedef struct {
     float v      [PN_PHASING_SERIES_MAX_ORDER+1];
     float vlogv  [PN_PHASING_SERIES_MAX_ORDER+1];
-    float vlogvsq[PN_PHASING_SERIES_MAX_ORDER+1];
 } pn_phasing_series_s;
 
 typedef struct{
@@ -331,21 +331,25 @@ typedef union{
 typedef struct
 {
     timeUnit_t               *merger_time_for_waveform;
-    m_frequency_array_s       frequency;
-    m_time_array_s            time;
-    m_complex_strain_array_s  strain;
+    frequency_array_s       frequency;
+    time_array_s            time;
+    complex_strain_array_s  strain;
     temporal_properties_s    *temporal_properties_of;
     system_properties_s      *system_properties_of;
     aproximant_variables_s   *aproximant_variables_of;
     int32_t                   num_waveforms;
-} m_complex_waveform_axes_s;
+} complex_waveform_axes_s;
 
 typedef struct
 {
-    timeUnit_t       *merger_time_for_waveform;
-    m_time_array_s    time;
-    m_strain_array_s  strain;
-} m_waveform_axes_s;
+    timeUnit_t               *merger_time_for_waveform;
+    time_array_s            time;
+    strain_array_s          strain;
+    temporal_properties_s    *temporal_properties_of;
+    system_properties_s      *system_properties_of;
+    aproximant_variables_s   *aproximant_variables_of;
+    int32_t                   num_waveforms;
+} waveform_axes_s;
 
 #endif
 

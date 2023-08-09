@@ -54,7 +54,11 @@
 // Phenom coefficient terms rho1, ..., rho3 from direct fit
 // AmpInsDFFitCoeffChiPNFunc[eta, chiPN]
 
+#define NUM_AMPLITUDE_INSPIRAL_COEFFICIENTS 3
+
 // Rho coefficient terms. See corresponding row in Table 5 arXiv:1508.07253:
+
+#ifdef __cplusplus // Only used in gpu code
 static const float AMPLITUDE_INSPIRAL_COEFFICIENT_TERMS_1[] = 
 {
       3931.8979897196696f, -17395.758706812805f  ,   3132.375545898835f,
@@ -76,20 +80,24 @@ static const float AMPLITUDE_INSPIRAL_COEFFICIENT_TERMS_3[] =
     3.0888029960154563e7f, -8.390870279256162e7f , -1.4535031953446497e6f,
     1.7063528990822166e7f, -4.2748659731120914e7f
 };
-#define NUM_AMPLITUDE_INSPIRAL_COEFFICIENTS 3
 static const float *AMPLITUDE_INSPIRAL_COEFFICIENT_TERMS[] =
 {
     AMPLITUDE_INSPIRAL_COEFFICIENT_TERMS_1,
     AMPLITUDE_INSPIRAL_COEFFICIENT_TERMS_2,
     AMPLITUDE_INSPIRAL_COEFFICIENT_TERMS_3
 };
+#endif
 
 ///////////////// Amplitude: Merger-Ringdown Coefficient Terms /////////////////
 
 // Phenom coefficient terms gamma1, ..., gamma3
 // AmpMRDAnsatzFunc[]
 
+#define NUM_AMPLITUDE_MERGER_RINGDOWN_COEFFICIENTS 3
+
 // Gamma coefficient terms. See corresponding rows in Table 5 arXiv:1508.07253:
+
+#ifdef __cplusplus // Only used in gpu code
 static const float AMPLITUDE_MERGER_RINGDOWN_COEFFICIENT_TERMS_1[] = 
 {
      0.006927402739328343f, 0.03020474290328911f, 0.006308024337706171f , 
@@ -111,19 +119,21 @@ static const float AMPLITUDE_MERGER_RINGDOWN_COEFFICIENT_TERMS_3[] =
     -0.9923793203111362f ,  4.820681208409587f   , -0.006134139870393713f,
     -0.38429253308696365f,  1.756175442198598f
 };
-#define NUM_AMPLITUDE_MERGER_RINGDOWN_COEFFICIENTS 3
 static const float *AMPLITUDE_MERGER_RINGDOWN_COEFFICIENT_TERMS[] =
 {
     AMPLITUDE_MERGER_RINGDOWN_COEFFICIENT_TERMS_1,
     AMPLITUDE_MERGER_RINGDOWN_COEFFICIENT_TERMS_2,
     AMPLITUDE_MERGER_RINGDOWN_COEFFICIENT_TERMS_3
 };
+#endif
 
 ////////////////// Amplitude: Intermediate coefficient terms ///////////////////
 
 // Amplitude Intermediate Collocation Fit coefficient terms.
 
 // This is the 'v2' value in Table 5 of arXiv:1508.07253:
+
+#ifdef __cplusplus // Only used in gpu code
 static const float AMPLITUDE_INTERMEDIATE_COLLOCATION_FIT_COEFFICIENT_TERMS[] = 
 {
      0.8149838730507785f, 2.5747553517454658f, 1.1610198035496786f, 
@@ -131,6 +141,8 @@ static const float AMPLITUDE_INTERMEDIATE_COLLOCATION_FIT_COEFFICIENT_TERMS[] =
     -2.7256896890432474f, 7.1140380397149965f, 0.1766934149293479f,
     -0.7978690983168183f, 2.1162391502005153f
 };
+#endif
+
 
 /****************************** Phase functions *******************************/
  
@@ -142,6 +154,10 @@ static const float AMPLITUDE_INTERMEDIATE_COLLOCATION_FIT_COEFFICIENT_TERMS[] =
 
 // Alpha 1 phenom coefficient terms. See corresponding row in Table 5 
 // rXiv:1508.07253:
+
+#define NUM_PHASE_MERGER_RINGDOWN_COEFFICIENTS 5
+
+#ifdef __cplusplus // Only used in gpu code
 static const float PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS_1[] = 
 {
       43.31514709695348f,   638.6332679188081f, -32.85768747216059f ,
@@ -177,7 +193,6 @@ static const float PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS_5[] =
     1.7516580039343603f, -5.990208965347804f   , -0.017945336522161195f,
     0.5965097794825992f, -2.0608879367971804f
 };
-#define NUM_PHASE_MERGER_RINGDOWN_COEFFICIENTS 5
 static const float *PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS[] =
 {
     PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS_1,
@@ -186,6 +201,7 @@ static const float *PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS[] =
     PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS_4,
     PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS_5
 };
+#endif
  
 ///////////////////// Phase: Intermediate Coefficient Terms ////////////////////
  
@@ -195,6 +211,9 @@ static const float *PHASE_MERGER_RINGDOWN_COEFFICIENT_TERMS[] =
 // PhiIntFitCoeff\[Chi]PNFunc[\[Eta], \[Chi]PN][[1]] Beta phenom coefficient 
 // terms. See corresponding row in Table 5 arXiv:1508.07253:
 
+#define NUM_PHASE_INTERMEDIATE_COEFFICIENTS 3
+
+#ifdef __cplusplus // Only used in gpu code
 static const float PHASE_INTERMEDIATE_COEFFICIENT_TERMS_1[] = 
 {
        97.89747327985583f,  -42.659730877489224f, 153.48421037904913f,
@@ -216,13 +235,15 @@ static const float PHASE_INTERMEDIATE_COEFFICIENT_TERMS_3[] =
     -0.000055780000112270685f, 0.00019142082884072178f ,  5.447166261464217e-6f   ,
     -0.00003220610095021982f ,  0.00007974016714984341f
 };
-#define NUM_PHASE_INTERMEDIATE_COEFFICIENTS 3
 static const float *PHASE_INTERMEDIATE_COEFFICIENT_TERMS[] =
 {
     PHASE_INTERMEDIATE_COEFFICIENT_TERMS_1,
     PHASE_INTERMEDIATE_COEFFICIENT_TERMS_2,
     PHASE_INTERMEDIATE_COEFFICIENT_TERMS_3
 };
+#endif
+
+
 
 ////////////////////// Phase: Inspiral Coefficient Terms //////////////////////
  
@@ -230,6 +251,9 @@ static const float *PHASE_INTERMEDIATE_COEFFICIENT_TERMS[] =
 // depending on eta and chiPN PhiInsAnsatzInt is a souped up Tf[1][1]phasing which 
 // depends on the sigma_i coefficients.
 
+#define NUM_PHASE_INSPIRAL_COEFFICIENTS 4
+
+#ifdef __cplusplus // Only used in gpu code
 // Sigma coefficient terms. See corresponding row in Table 5 arXiv:1508.07253:
 static const float PHASE_INSPIRAL_COEFFICIENT_TERMS_1[] = 
 {
@@ -259,7 +283,6 @@ static const float PHASE_INSPIRAL_COEFFICIENT_TERMS_4[] =
     -2.5019716386377467e6f, 1.0274495902259542e7f , -85360.30079034246f ,
     -570025.3441737515f   , + 4.396844346849777e6f,
 };
-#define NUM_PHASE_INSPIRAL_COEFFICIENTS 4
 static const float *PHASE_INSPIRAL_COEFFICIENT_TERMS[] =
 {
     PHASE_INSPIRAL_COEFFICIENT_TERMS_1,
@@ -267,7 +290,7 @@ static const float *PHASE_INSPIRAL_COEFFICIENT_TERMS[] =
     PHASE_INSPIRAL_COEFFICIENT_TERMS_3,
     PHASE_INSPIRAL_COEFFICIENT_TERMS_4
 };
-
+#endif
 
 /************************ Delta Terms *************************/
 
