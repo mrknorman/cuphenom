@@ -6,7 +6,7 @@ def to_ctypes(to_convert):
     return (c_float * len(to_convert))(*to_convert)
 
 def ensure_list(item):
-    return item if isinstance(item, (list, tuple, set)) else [item]
+    return item if isinstance(item, (list, tuple, set, np.ndarray)) else [item]
 
 # Load the library
 current_dir = os.path.dirname(os.path.realpath(__file__))
@@ -59,11 +59,9 @@ def generate_phenom_d(
         if name not in length_one_args + length_three_args
     }
     
-    print(args_to_check)
-
     for arg_name, arg_value in args_to_check.items():
         assert len(arg_value) == num_waveforms, \
-        f"{arg_name} does not have the expected length of {num_waveforms}"
+        f"{arg_name} does not have the expected length of {num_waveforms}, instead = {len(arg_value)}"
     
     # Ensure input spins are float arrays of length 3
     assert len(spin_1_in) == len(spin_2_in) == 3*num_waveforms
