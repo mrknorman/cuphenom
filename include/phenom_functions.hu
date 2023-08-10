@@ -455,10 +455,16 @@ __global__ void _inclinationAdjust(
     // If not outside array bounds, add value toa array element:
     if (
            (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        && (waveform_index < waveform_axes.num_waveforms)
     ) {
-        waveform_axes.strain.values[thread_index].plus  *= plus_factor_array[waveform_index];
-        waveform_axes.strain.values[thread_index].cross *= cross_factor_array[waveform_index];
+        if (sample_index <
+            waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        {
+            waveform_axes.strain.values[thread_index].plus  *= 
+                plus_factor_array[waveform_index];
+            waveform_axes.strain.values[thread_index].cross *= 
+                cross_factor_array[waveform_index];
+        }
     }    
 }
 
@@ -536,7 +542,9 @@ __global__ void _calculatePolarisationFactors(
     // If not outside array bounds, add value toa array element:
     if (waveform_index < waveform_axes.num_waveforms) 
 	{    
-        const float polarization = waveform_axes.system_properties_of[waveform_index].ascending_node_longitude;
+        const float polarization = 
+            waveform_axes.system_properties_of[waveform_index]
+                .ascending_node_longitude;
         
         cos_polarization_array[waveform_index] = cosf(2.0f*polarization);
         sin_polarization_array[waveform_index] = sinf(2.0f*polarization);
@@ -562,8 +570,12 @@ __global__ void _polarisationRotation(
         
     if (
            (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        && (waveform_index < waveform_axes.num_waveforms)
     ) {
+        
+        if (sample_index <
+            waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        {
         
         const float cos_polarization = 
             cos_polarization_array[waveform_index];
@@ -579,6 +591,7 @@ __global__ void _polarisationRotation(
         waveform_axes.strain.values[thread_index].cross = 
             (cos_polarization*waveform_axes.strain.values[thread_index].cross) 
             - (sin_polarization*temp_plus);
+        }
     }  
 }
 
@@ -671,24 +684,29 @@ __global__ void _applyPolarization(
     
     if (
            (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        && (waveform_index < waveform_axes.num_waveforms)
     ) {
-        const cuFloatComplex original_plus = 
-            waveform_axes.strain.values[thread_index].plus;
-        const cuFloatComplex original_cross = 
-            waveform_axes.strain.values[thread_index].cross;
-            
-        waveform_axes.strain.values[thread_index].plus =
-            cuCaddf(
-              cuCmulf(cos_coefficients[waveform_index], original_plus),
-              cuCmulf(sin_coefficients[waveform_index], original_cross)
-            );
         
-        waveform_axes.strain.values[thread_index].cross = 
-            cuCsubf(
-              cuCmulf(cos_coefficients[waveform_index], original_cross),
-              cuCmulf(sin_coefficients[waveform_index], original_plus)
-            );
+        if (sample_index < 
+            waveform_axes.strain.num_samples_in_waveform[waveform_index])
+        {
+            const cuFloatComplex original_plus = 
+                waveform_axes.strain.values[thread_index].plus;
+            const cuFloatComplex original_cross = 
+                waveform_axes.strain.values[thread_index].cross;
+
+            waveform_axes.strain.values[thread_index].plus =
+                cuCaddf(
+                  cuCmulf(cos_coefficients[waveform_index], original_plus),
+                  cuCmulf(sin_coefficients[waveform_index], original_cross)
+                );
+
+            waveform_axes.strain.values[thread_index].cross = 
+                cuCsubf(
+                  cuCmulf(cos_coefficients[waveform_index], original_cross),
+                  cuCmulf(sin_coefficients[waveform_index], original_plus)
+                );
+        }
     }
 }
 
@@ -910,33 +928,38 @@ __global__ void initFrequencyArray(
     // Assign unique thread index for GPU calculation:
     const int32_t thread_index = 
         blockIdx.x * blockDim.x + threadIdx.x;
-    const int32_t max_num_samples_per_waveform = 
-        waveform_axes.strain.max_num_samples_per_waveform;
-    const int32_t waveform_index = (int32_t)
-        floorf((float)thread_index / (float)max_num_samples_per_waveform);
-    const int32_t sample_index = 
-        (int32_t) thread_index % max_num_samples_per_waveform;
     
-    if (
-           (thread_index < waveform_axes.strain.total_num_samples) 
-        && (sample_index < waveform_axes.frequency.num_samples_in_waveform[waveform_index])
-    ) {
-        
-        const temporal_properties_s temporal_properties =
-            waveform_axes.temporal_properties_of[waveform_index];
-        
-        const frequencyUnit_t starting_frequency = 
-            temporal_properties.starting_frequency;
-        const frequencyUnit_t frequency_interval = 
-            temporal_properties.frequency_interval;
-    
-        // Initilise frequency array using the upper and lower bounds:
-        const int32_t start_index = 
-            (int32_t) (starting_frequency.hertz 
-                / frequency_interval.hertz);
-    
-        waveform_axes.frequency.values[thread_index].hertz = 
-            (float)(sample_index+start_index)*frequency_interval.hertz;
+    if (thread_index < waveform_axes.strain.total_num_samples) 
+    {
+        const int32_t max_num_samples_per_waveform = 
+            waveform_axes.strain.max_num_samples_per_waveform;
+        const int32_t waveform_index = (int32_t)
+            floorf((float)thread_index / (float)max_num_samples_per_waveform);
+        const int32_t sample_index = 
+            (int32_t) thread_index % max_num_samples_per_waveform;
+            
+        if (waveform_index < waveform_axes.num_waveforms)
+        {
+            if (sample_index < 
+                waveform_axes.frequency.num_samples_in_waveform[waveform_index])
+            {
+                const temporal_properties_s temporal_properties =
+                    waveform_axes.temporal_properties_of[waveform_index];
+
+                const frequencyUnit_t starting_frequency = 
+                    temporal_properties.starting_frequency;
+                const frequencyUnit_t frequency_interval = 
+                    temporal_properties.frequency_interval;
+
+                // Initilise frequency array using the upper and lower bounds:
+                const int32_t start_index = 
+                    (int32_t) (starting_frequency.hertz 
+                        / frequency_interval.hertz);
+
+                waveform_axes.frequency.values[thread_index].hertz = 
+                    (float)(sample_index+start_index)*frequency_interval.hertz;
+            }
+        }
     }    
 }
 
@@ -1507,14 +1530,13 @@ __global__ void _cropAxes(
     const int32_t total_num_samples =
         waveform_axes.strain.total_num_samples;
         
-    if(thread_index < total_num_samples) 
+    if (((thread_index < total_num_samples) && 
+        (sample_index > num_unneeded_samples)) &&
+        (waveform_index < waveform_axes.num_waveforms))
     {
-        if (sample_index > num_unneeded_samples)
-        {
-            const int32_t new_index = waveform_index*num_samples_needed + new_sample_index;
-            
-            output[new_index] = waveform_axes.strain.values[thread_index];
-        }
+        const int32_t new_index = waveform_index*num_samples_needed + new_sample_index;
+
+        output[new_index] = waveform_axes.strain.values[thread_index];
     }
 }
 

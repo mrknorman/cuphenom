@@ -15,8 +15,8 @@ import time
 def test_generate_phenom():
     # Define reasonable input parameters for an average gravitational wave
     num_waveforms = 32
-    sample_rate_hertz = 4096.0
-    duration_seconds = 4.0
+    sample_rate_hertz = 8192.0
+    duration_seconds = 2.0
     
     mass_1_msun = np.random.uniform(10, 100, size = num_waveforms)  # random float between 1 and 30
     mass_2_msun = np.random.uniform(10, 100, size = num_waveforms)
@@ -106,14 +106,14 @@ def speed_test_generate_phenom(num_tests=100):
     runtimes = []
     
     # Define random input parameters
-    num_waveforms = 1000
-    sample_rate_hertz = 4096.0
-    duration_seconds = 4.0
+    num_waveforms = 992
+    sample_rate_hertz = 8192.0
+    duration_seconds = 2.0
         
     pbar = tqdm(total=num_tests)
     
-    mass_1_msun = np.random.uniform(10, 50, size = num_waveforms)  # random float between 1 and 30
-    mass_2_msun = np.random.uniform(10, 50, size = num_waveforms)
+    mass_1_msun = np.random.uniform(5, 95, size = num_waveforms)  # random float between 1 and 30
+    mass_2_msun = np.random.uniform(5, 95, size = num_waveforms)
     inclination_radians = np.random.uniform(0, np.pi, size = num_waveforms)
     distance_mpc = np.random.uniform(10.0, 1000.0, size = num_waveforms)
     reference_orbital_phase_in = np.random.uniform(0, np.pi*2, size = num_waveforms)
@@ -194,6 +194,16 @@ def speed_test_generate_phenom(num_tests=100):
     show(p)
 
 if __name__ == "__main__":
+    
+    device_num = "2"
+    
+    # Later include auto GPU selector
+    try:
+        # Set the device number for CUDA to recognize.
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(device_num)
+    except Exception as e:
+        logging.error(f"Failed to set CUDA_VISIBLE_DEVICES environment variable: {e}")
+        raise
     
     # Call the test function
     test_generate_phenom()

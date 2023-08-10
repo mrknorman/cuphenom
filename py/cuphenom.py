@@ -31,19 +31,19 @@ lib.pythonWrapperPhenomD.argtypes = \
 lib.pythonWrapperPhenomD.restype = POINTER(c_float)
 
 def generate_phenom_d(
-    num_waveforms,
-    sample_rate_hertz,
-	duration_seconds,
-	mass_1_msun,
-	mass_2_msun,
-	inclination_radians,
-	distance_mpc,
-	reference_orbital_phase_in,
-	ascending_node_longitude,
-	eccentricity,
-	mean_periastron_anomaly,
-	spin_1_in,
-	spin_2_in
+    num_waveforms = 1,
+    sample_rate_hertz = 4096.0,
+	duration_seconds = 2.0,
+	mass_1_msun = 30.0,
+	mass_2_msun = 30.0,
+	inclination_radians = 0.0,
+	distance_mpc = 1000.0,
+	reference_orbital_phase_in = 0.0,
+	ascending_node_longitude = 0.0,
+	eccentricity = 0.0,
+	mean_periastron_anomaly = 0.0,
+	spin_1_in = [0.0, 0.0, 0.0],
+	spin_2_in = [0.0, 0.0, 0.0]
 	):
     
     args = locals().copy()
