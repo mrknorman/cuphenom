@@ -5,8 +5,11 @@ from bokeh.layouts import gridplot
 from bokeh.plotting import figure, output_file, show
 from bokeh.models import ColumnDataSource
 
+from pathlib import Path
+
 from tqdm import tqdm
 
+import os
 import time
 
 def test_generate_phenom():
@@ -71,9 +74,24 @@ def test_generate_phenom():
 
         # Append to the figures list
         figures.append(p)
-
+    
+    # Get directory outside git repo:
+    grandparent_directory_path = Path(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))
+        )
+    )
+    
+    output_directory_path = grandparent_directory_path / "cuphenom_outputs/"
+    
+    if not os.path.exists(output_directory_path):
+        os.makedirs(output_directory_path)
+        
+    output_file_name = output_directory_path / "example_plots.html"
+    
     # Output to a static HTML file
-    output_file("gravitational_wave_polarisations.html")
+    output_file(output_file_name)
 
     # Arrange plots in a grid, where each row has plots from the figures list
     grid = gridplot([figures])
@@ -152,9 +170,25 @@ def speed_test_generate_phenom(num_tests=100):
 
     # Move the legend to the upper left corner
     p.legend.location = "top_left"
+    
+    # Get directory outside git repo:
+    grandparent_directory_path = Path(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))
+        )
+    )
+    
+    output_directory_path = grandparent_directory_path / "cuphenom_outputs/"
+    
+    if not os.path.exists(output_directory_path):
+        os.makedirs(output_directory_path)
+        
+    output_file_name = output_directory_path / "runtimes.html"
+    
 
     # Output to static HTML file
-    output_file("generatePhenom_runtimes.html")
+    output_file(output_file_name)
 
     # Show the results
     show(p)
