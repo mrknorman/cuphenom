@@ -1524,19 +1524,23 @@ __global__ void _cropAxes(
         floorf((float)thread_index / (float)max_num_samples_per_waveform);
     const int32_t sample_index = 
         (int32_t) thread_index % max_num_samples_per_waveform;        
-    const int32_t num_unneeded_samples = max_num_samples_per_waveform - num_samples_needed;
-    const int32_t new_sample_index = sample_index - num_unneeded_samples;
     
     const int32_t total_num_samples =
         waveform_axes.strain.total_num_samples;
         
-    if (((thread_index < total_num_samples) && 
-        (sample_index > num_unneeded_samples)) &&
+    if ((thread_index < total_num_samples) && 
         (waveform_index < waveform_axes.num_waveforms))
     {
-        const int32_t new_index = waveform_index*num_samples_needed + new_sample_index;
-
-        output[new_index] = waveform_axes.strain.values[thread_index];
+        const int32_t num_unneeded_samples = 
+            waveform_axes.strain.num_samples_in_waveform[waveform_index] 
+            - num_samples_needed;
+        const int32_t new_sample_index = sample_index - num_unneeded_samples;
+        
+        if  (sample_index > num_unneeded_samples)
+        {
+            const int32_t new_index = waveform_index*num_samples_needed + new_sample_index;
+            output[new_index] = waveform_axes.strain.values[thread_index];
+        }
     }
 }
 
