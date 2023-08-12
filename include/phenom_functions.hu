@@ -1533,8 +1533,7 @@ __global__ void _cropAxes(
         (waveform_index < waveform_axes.num_waveforms))
     {
         int32_t num_unneeded_samples = 
-            //arg_max_array[waveform_index]
-            waveform_axes.strain.max_num_samples_per_waveform
+            arg_max_array[waveform_index]
             - num_samples_needed;
             
         num_unneeded_samples *= (num_unneeded_samples > 0);
@@ -1574,24 +1573,18 @@ extern "C" waveform_axes_s cropAxes(
       waveform_axes.strain.max_num_samples_per_waveform*NUM_POLARIZATION_STATES,
       waveform_axes.strain.total_num_samples*NUM_POLARIZATION_STATES
 	);
-    
-    timeUnit_t time_after_merger = initTimeSeconds(0.1f);
-    
-    float num_samples_after_merger = 
-        ceilf(time_after_merger.seconds/temporal_properties.time_interval.seconds);
         
-    hostCudaAddValue(
-          arg_max_array, 
-          (double) num_samples_after_merger, 
-          num_waveforms
-    );
-    
     hostCudaMultiplyByValue(
         arg_max_array, 
         0.5, 
         num_waveforms
     );
         
+    timeUnit_t time_after_merger = initTimeSeconds(0.15f);
+    
+    float num_samples_after_merger = 
+        ceilf(time_after_merger.seconds/temporal_properties.time_interval.seconds);
+    
     hostCudaAddValue(
           arg_max_array, 
           (double) num_samples_after_merger, 
