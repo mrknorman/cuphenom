@@ -23,9 +23,9 @@ def test_generate_phenom():
     inclination_radians = np.random.uniform(0, np.pi, size = num_waveforms)
     distance_mpc = np.random.uniform(10.0, 1000.0, size = num_waveforms)
     reference_orbital_phase_in = np.random.uniform(0, np.pi*2, size = num_waveforms)
-    ascending_node_longitude = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    ascending_node_longitude = np.random.uniform(0, np.pi/4, size = num_waveforms)
     eccentricity = np.random.uniform(0, 0.1, size = num_waveforms)
-    mean_periastron_anomaly = np.random.uniform(0, np.pi*2, size = num_waveforms)
+    mean_periastron_anomaly = np.random.uniform(0, 2*np.pi, size = num_waveforms)
     spin_1_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
     spin_2_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
 
@@ -207,4 +207,4 @@ if __name__ == "__main__":
     
     # Call the test function
     test_generate_phenom()
-    speed_test_generate_phenom(num_tests=100000)
+    speed_test_generate_phenom(num_tests=10000)

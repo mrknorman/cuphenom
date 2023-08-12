@@ -1511,6 +1511,7 @@ extern "C" int32_t inverseRearrangeMemoryKernel(
 
 __global__ void _cropAxes(
           waveform_axes_s   waveform_axes, 
+          float            *arg_max_array,
           strain_element_t *output,
     const int32_t           num_samples_needed
     ) {
@@ -1531,12 +1532,16 @@ __global__ void _cropAxes(
     if ((thread_index < total_num_samples) && 
         (waveform_index < waveform_axes.num_waveforms))
     {
-        const int32_t num_unneeded_samples = 
-            waveform_axes.strain.num_samples_in_waveform[waveform_index] 
+        int32_t num_unneeded_samples = 
+            //arg_max_array[waveform_index]
+            waveform_axes.strain.max_num_samples_per_waveform
             - num_samples_needed;
+            
+        num_unneeded_samples *= (num_unneeded_samples > 0);
+        
         const int32_t new_sample_index = sample_index - num_unneeded_samples;
         
-        if  (sample_index > num_unneeded_samples)
+        if  ((sample_index > num_unneeded_samples) && (new_sample_index < num_samples_needed))
         {
             const int32_t new_index = waveform_index*num_samples_needed + new_sample_index;
             output[new_index] = waveform_axes.strain.values[thread_index];
@@ -1545,8 +1550,9 @@ __global__ void _cropAxes(
 }
 
 extern "C" waveform_axes_s cropAxes(
-          waveform_axes_s  waveform_axes, 
-    const int32_t          num_samples_needed
+          waveform_axes_s       waveform_axes, 
+    const temporal_properties_s temporal_properties,
+    const int32_t               num_samples_needed
     ) {
     
     const int32_t total_num_samples =
@@ -1554,21 +1560,62 @@ extern "C" waveform_axes_s cropAxes(
     const int32_t num_waveforms =
          waveform_axes.num_waveforms;
     
+    float* arg_max_array = NULL;
+    cudaAllocateDeviceMemory(
+        num_waveforms,
+        sizeof(float),
+        (void**)&arg_max_array
+    );
+        
+    cudaFindArgAbsMaxMulti(
+      (float*) waveform_axes.strain.values, 
+      arg_max_array,
+      num_waveforms,
+      waveform_axes.strain.max_num_samples_per_waveform*NUM_POLARIZATION_STATES,
+      waveform_axes.strain.total_num_samples*NUM_POLARIZATION_STATES
+	);
+    
+    timeUnit_t time_after_merger = initTimeSeconds(0.1f);
+    
+    float num_samples_after_merger = 
+        ceilf(time_after_merger.seconds/temporal_properties.time_interval.seconds);
+        
+    hostCudaAddValue(
+          arg_max_array, 
+          (double) num_samples_after_merger, 
+          num_waveforms
+    );
+    
+    hostCudaMultiplyByValue(
+        arg_max_array, 
+        0.5, 
+        num_waveforms
+    );
+        
+    hostCudaAddValue(
+          arg_max_array, 
+          (double) num_samples_after_merger, 
+          num_waveforms
+    );
+    
     strain_element_t* cropped_array = NULL;
     cudaAllocateDeviceMemory(
         num_waveforms*num_samples_needed,
         sizeof(strain_element_t),
         (void**)&cropped_array
     );
-    
+
     const int32_t grid_size = 
         (total_num_samples + BLOCK_SIZE - 1) / BLOCK_SIZE;
     
     _cropAxes<<<grid_size, BLOCK_SIZE>>>(
         waveform_axes, 
+        arg_max_array,
         cropped_array,
         num_samples_needed
     );
+    
+    cudaFree(arg_max_array);
         
     cudaFree(waveform_axes.strain.values);
     

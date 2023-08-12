@@ -522,7 +522,6 @@ waveform_axes_s cuInspiralTDFromFD(
     for (int32_t index = 0; index < num_waveforms; index++)
     {
         time_shifts[index] = temporal_properties[index].extra_time;
-
     }
 
     timeUnit_t *time_shifts_g = NULL;
@@ -650,7 +649,6 @@ waveform_axes_s generateInspiral(
             num_waveforms,
             approximant
         );
-        
     
     // Set inclination to original: i don't know if this changes?
     for (int32_t index = 0; index < num_waveforms; index++)
@@ -733,6 +731,7 @@ waveform_axes_s generateCroppedInspiral(
     // Crop unneccisary samples:
     waveform_axes = cropAxes(
         waveform_axes, 
+        temporal_properties[0],
         num_samples
     );
         
