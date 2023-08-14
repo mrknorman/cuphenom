@@ -106,8 +106,8 @@ def speed_test_generate_phenom(num_tests=100):
     runtimes = []
     
     # Define random input parameters
-    num_waveforms = 992
-    sample_rate_hertz = 8192.0
+    num_waveforms = 1000
+    sample_rate_hertz = 2048.0
     duration_seconds = 2.0
         
     pbar = tqdm(total=num_tests)
@@ -207,4 +207,4 @@ if __name__ == "__main__":
     
     # Call the test function
     test_generate_phenom()
-    speed_test_generate_phenom(num_tests=10000)
+    speed_test_generate_phenom(num_tests=100000)
