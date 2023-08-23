@@ -379,7 +379,7 @@ extern "C" int32_t performTimeShifts(
         waveform_axes,
         num_samples_time_shift
     );
-    
+        
     cudaFree(num_samples_time_shift);
     
     //XLALGPSAdd(&(*hptilde)->epoch, tshift);
@@ -707,7 +707,7 @@ __global__ void _applyPolarization(
                   cuCmulf(sin_coefficients[waveform_index], original_plus)
                 );
         }
-    }
+    }    
 }
 
 extern "C" int32_t applyPolarization(
@@ -1440,7 +1440,7 @@ __global__ void _rearrangeMemoryKernel(
             new_index = (waveform_index*2+1)*num_elements_in_subarray + sample_index/2;
         }
 
-        output[new_index] = input[thread_index];
+        output[new_index] = input[thread_index];      
     }
 }
 

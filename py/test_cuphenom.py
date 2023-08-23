@@ -14,21 +14,21 @@ import time
 
 def test_generate_phenom():
     # Define reasonable input parameters for an average gravitational wave
-    num_waveforms = 32
-    sample_rate_hertz = 8192.0
+    num_waveforms = 1000
+    sample_rate_hertz = 2048.0
     duration_seconds = 2.0
     
-    mass_1_msun = np.random.uniform(10, 100, size = num_waveforms)  # random float between 1 and 30
-    mass_2_msun = np.random.uniform(10, 100, size = num_waveforms)
-    inclination_radians = np.random.uniform(0, np.pi, size = num_waveforms)
-    distance_mpc = np.random.uniform(10.0, 1000.0, size = num_waveforms)
-    reference_orbital_phase_in = np.random.uniform(0, np.pi*2, size = num_waveforms)
-    ascending_node_longitude = np.random.uniform(0, np.pi/4, size = num_waveforms)
-    eccentricity = np.random.uniform(0, 0.1, size = num_waveforms)
-    mean_periastron_anomaly = np.random.uniform(0, 2*np.pi, size = num_waveforms)
-    spin_1_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
-    spin_2_in = np.random.uniform(-0.5, 0.5, size = num_waveforms*3)
-
+    mass_1_msun = np.random.uniform(30, 30, size = num_waveforms)  # random float between 1 and 30
+    mass_2_msun = np.random.uniform(10, 10, size = num_waveforms)
+    inclination_radians = np.random.uniform(0, 0, size = num_waveforms)
+    distance_mpc = np.random.uniform(10.0, 10.0, size = num_waveforms)
+    reference_orbital_phase_in = np.random.uniform(0, 0, size = num_waveforms)
+    ascending_node_longitude = np.random.uniform(0, 0, size = num_waveforms)
+    eccentricity = np.random.uniform(0, 0.0, size = num_waveforms)
+    mean_periastron_anomaly = np.random.uniform(0, 0, size = num_waveforms)
+    spin_1_in = np.random.uniform(0, 0, size = num_waveforms*3)
+    spin_2_in = np.random.uniform(0, 0, size = num_waveforms*3)
+    
     # Call generatePhenom function
     result = generate_phenom_d(
         num_waveforms,
@@ -55,6 +55,9 @@ def test_generate_phenom():
     figures = []  # list to store all figures
 
     for i in range(num_waveforms):
+        
+        if i < 990:
+            continue
         # Prepare data for bokeh
         data = ColumnDataSource(data=dict(
             time=times,
@@ -207,4 +210,4 @@ if __name__ == "__main__":
     
     # Call the test function
     test_generate_phenom()
-    speed_test_generate_phenom(num_tests=100000)
+    #speed_test_generate_phenom(num_tests=100000)

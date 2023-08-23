@@ -110,23 +110,6 @@ complex_waveform_axes_s cuPhenomDGenerateFD(
         waveform_axes_fd
     );
     
-    /*
-    cudaFree(waveform_axes_fd.strain.values);
-    cudaFree(waveform_axes_fd.strain.num_samples_in_waveform);
-    cudaFree(waveform_axes_fd.aproximant_variables_of);
-    cudaFree(waveform_axes_fd.system_properties_of);
-    cudaFree(waveform_axes_fd.temporal_properties_of);
-    cudaFree(waveform_axes_fd.merger_time_for_waveform);
-        
-    cudaFree(waveform_axes_fd.frequency.values);
-    cudaFree(waveform_axes_fd.frequency.interval_of_waveform);
-    cudaFree(waveform_axes_fd.frequency.num_samples_in_waveform);
-    
-    cudaFree(waveform_axes_fd.time.values);
-    cudaFree(waveform_axes_fd.time.interval_of_waveform);
-    cudaFree(waveform_axes_fd.time.num_samples_in_waveform);
-    */
-    
     for (int32_t index = 0; index < num_waveforms; index++) 
     {
         const frequencyUnit_t reference_frequency  = temporal_properties[index].reference_frequency; 
@@ -480,7 +463,7 @@ complex_waveform_axes_s cuInspiralFD(
     performTimeShifts(
         waveform_axes_fd,
         time_shifts_g
-    );
+    );    
     
     cudaFree(time_shifts_g);
     

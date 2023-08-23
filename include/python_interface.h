@@ -41,6 +41,7 @@ float *pythonWrapperPhenomD(
             initMassSolarMass(mass_1_msun[index]);
         const massUnit_t      mass_2       = 
             initMassSolarMass(mass_2_msun[index]);
+                    
         const angularUnit_t   inclination  = 
             initAngleRadians(inclination_radians[index]);
         const lengthUnit_t    distance     = 

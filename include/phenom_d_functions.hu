@@ -2035,7 +2035,6 @@ extern "C" complex_waveform_axes_s initPhenomDWaveformAxes(
         );
     
     // Break in case of emergency
-    
     /*
     for (int32_t index = 0; index < num_waveforms; index++)
     {

@@ -716,16 +716,16 @@ waveform_axes_s convertWaveformFDToTD(
         (float) max_num_samples_per_waveform_td
     );
     
-    cuFloatComplex *temp_strain_values = NULL;
+    cuFloatComplex *temp_strain_values_fd = NULL;
     cudaAllocateDeviceMemory(
         sizeof(cuFloatComplex),
         waveform_axes_td.strain.total_num_samples*2,
-        (void**)&temp_strain_values
+        (void**)&temp_strain_values_fd
     );
     
     rearrangeMemoryKernel(
         (cuFloatComplex*)waveform_axes_fd.strain.values,
-        temp_strain_values,
+        temp_strain_values_fd,
         num_waveforms, 
         waveform_axes_fd.strain.max_num_samples_per_waveform
     );
@@ -735,12 +735,22 @@ waveform_axes_s convertWaveformFDToTD(
     cudaFree(waveform_axes_fd.frequency.values);
     cudaFree(waveform_axes_fd.frequency.interval_of_waveform);
     
+    cufftReal* *temp_strain_values = NULL;
+    cudaAllocateDeviceMemory(
+        sizeof(cufftReal),
+        waveform_axes_td.strain.total_num_samples*2,
+        (void**)&temp_strain_values
+    );
+    
     cudaIRfft(
-        waveform_axes_td.strain.max_num_samples_per_waveform,
+        waveform_axes_fd.strain.max_num_samples_per_waveform,
         num_waveforms*2,
 	    waveform_duration.seconds,
+        temp_strain_values_fd,
         temp_strain_values
     );
+    
+    cudaFree(temp_strain_values_fd);
         
     inverseRearrangeMemoryKernel(
         (float*)temp_strain_values, 
