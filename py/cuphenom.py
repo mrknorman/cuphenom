@@ -2,6 +2,8 @@ import numpy as np
 from ctypes import *
 import os
 
+NUM_POLARISATION_STATES : int = 2
+
 def to_ctypes(to_convert):
     return (c_float * len(to_convert))(*to_convert)
 
@@ -61,7 +63,8 @@ def generate_phenom_d(
     
     for arg_name, arg_value in args_to_check.items():
         assert len(arg_value) == num_waveforms, \
-        f"{arg_name} does not have the expected length of {num_waveforms}, instead = {len(arg_value)}"
+        (f"{arg_name} does not have the expected length of {num_waveforms}, "
+         "instead = {len(arg_value)}")
     
     # Ensure input spins are float arrays of length 3
     assert len(spin_1_in) == len(spin_2_in) == 3*num_waveforms
@@ -73,7 +76,7 @@ def generate_phenom_d(
     }
 
     # Call the C function
-    result_ptr = lib.pythonWrapperPhenomD(
+    waveform_pointer = lib.pythonWrapperPhenomD(
         num_waveforms,
         sample_rate_hertz,
         duration_seconds,
@@ -89,14 +92,20 @@ def generate_phenom_d(
         ctypes_args["spin_2_in"]
     )
 
-    num_samples = \
+    total_num_samples = \
         int(np.floor(sample_rate_hertz * duration_seconds))*num_waveforms
     
-    result = np.ctypeslib.as_array(result_ptr, shape=(num_samples * 2,))
-    result = np.column_stack((result[::2], result[1::2]))
+    waveforms = np.ctypeslib.as_array(
+        waveform_pointer, shape=(total_num_samples * 2,)
+    )
     
-    lib.free(result_ptr)
+    # Reshape array:
+    num_samples = int(sample_rate_hertz*duration_seconds)
+    strain = np.stack((
+        waveforms[::2].reshape(-1, num_samples),
+        waveforms[1::2].reshape(-1, num_samples)
+    ), axis=1)
 
-    return result
+    return strain
     
     
