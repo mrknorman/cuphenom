@@ -22,7 +22,7 @@ PYTHON_LINK = -L/home/michael.norman/.conda/envs/dragon/lib/python3.10/config-3.
 MKL_LINK = -L/opt/intel/oneapi/mkl/2023.1.0/lib/intel64 -Wl,-rpath,/opt/intel/oneapi/mkl/2023.1.0/lib/intel64 -lmkl_rt
 
 GSL_LINK = -L/usr/lib -lgsl -lgslcblas
-LINKER_FLAGS = -lcrypt -lpthread -ldl -lutil -lrt -lm -lmkl_rt $(GSL_LINK)
+LINKER_FLAGS = -lcrypt -lpthread -ldl -lutil -lrt -lm  $(GSL_LINK)
 
 #OBJ_NAME specifies the name of our exectuable
 OBJ_NAME   = ./bin/main.out
@@ -35,7 +35,7 @@ bin:
 all : $(OBJS) | bin
 	$(CC) $(OBJS) -pg -lcurand -g -lcufft $(INCLUDE) $(PYTHON_INCLUDE) $(LAL_INCLUDE) $(WARNING_FLAG) $(NVIDIA_DEBUG) $(NVIDIA_FLAGS) $(LAL_LINK) $(PYTHON_LINK) $(LINKER_FLAGS) -o $(OBJ_NAME)
 shared :	
-	$(CC) ./src/cuphenom_functions.c ./src/cuda_functions.cu -shared -fPIC -lcurand -lcufft $(INCLUDE) $(WARNING_FLAG) $(NVIDIA_FLAGS) $(LINKER_FLAGS) $(MKL_LINK) -o ./python/libphenom.so
+	$(CC) ./src/cuphenom_functions.c ./src/cuda_functions.cu -shared -fPIC -lcurand -lcufft $(INCLUDE) $(WARNING_FLAG) $(NVIDIA_FLAGS) $(LINKER_FLAGS) -o ./python/libphenom.so
 test : | bin
 	$(CC) ./src/test_cuda.c ./src/cuda_functions.cu -lcurand -lcufft $(INCLUDE) $(WARNING_FLAG) $(NVIDIA_FLAGS) $(LINKER_FLAGS) $(MKL_LINK) -o ./bin/test_cuda.out
 	
