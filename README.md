@@ -10,5 +10,5 @@ On the LIGO cluster CuPhenom should be compilable with little difficulty. Run th
 cd cuphenom
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
 export PATH=/usr/local/cuda/bin${PATH:+:${PATH}}$
-make all
+make shared
 ```
